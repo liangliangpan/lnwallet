@@ -25,7 +25,7 @@ import android.os.Bundle
 import fr.acinq.bitcoin.{BinaryData, MilliSatoshi, Script}
 import org.bitcoinj.core.{Coin, TransactionOutput}
 import android.widget.{ImageButton, TextView}
-import scala.util.{Failure, Success}
+import scala.util.{Failure, Success, Try}
 
 
 class LNStartFundActivity extends TimerActivity { me =>
@@ -122,11 +122,13 @@ class LNStartFundActivity extends TimerActivity { me =>
 
     def askForFunding(their: Init): TimerTask = UITask {
       // Current feerate may be higher than hard capacity so choose the currently largest value
-      val minCapacity = MilliSatoshi(math.max(LNParams.broadcaster.perKwThreeSat, 250000L) * 1000L)
+      val minCap = MilliSatoshi(math.max(LNParams.broadcaster.perKwThreeSat, 250000L) * 1000L)
+      val onChainBalance: MilliSatoshi = app.kit.conf1Balance
+      val maxRecommendedCap = MilliSatoshi(16777215000L)
 
-      val minHuman = denom withSign minCapacity
-      val maxHuman = denom withSign LNParams.maxChanCapacity
-      val canSend = denom withSign app.kit.conf1Balance
+      val canSend = denom withSign onChainBalance
+      val maxHuman = denom withSign maxRecommendedCap
+      val minHuman = denom withSign minCap
 
       val content = getLayoutInflater.inflate(R.layout.frag_input_fiat_converter, null, false)
       val rateManager = new RateManager(getString(amount_hint_newchan).format(minHuman, maxHuman, canSend), content)
@@ -154,14 +156,15 @@ class LNStartFundActivity extends TimerActivity { me =>
       }
 
       def askAttempt(alert: AlertDialog) = rateManager.result match {
-        case Success(ms) if ms > LNParams.maxChanCapacity => app toast dialog_sum_big
-        case Success(ms) if ms < minCapacity => app toast dialog_sum_small
+        case Success(ms) if ms > maxRecommendedCap => app toast dialog_sum_big
+        case Success(ms) if ms < minCap => app toast dialog_sum_small
         case Failure(reason) => app toast dialog_sum_empty
         case Success(ms) => rm(alert)(next(ms).start)
       }
 
-      val bld = baseBuilder(getString(ln_ops_start_fund_title).html, content)
-      mkCheckForm(askAttempt, none, bld, dialog_next, dialog_cancel)
+      // When balance is less than or equal max chan capacity we fill it in thus giving a hint that all can be sent into channel
+      mkCheckForm(askAttempt, none, baseBuilder(getString(ln_ops_start_fund_title).html, content), dialog_next, dialog_cancel)
+      if (onChainBalance >= minCap && onChainBalance <= maxRecommendedCap) rateManager setSum Try(onChainBalance)
     }
 
     whenBackPressed = UITask {
