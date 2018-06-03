@@ -114,6 +114,7 @@ class WalletApp extends Application { me =>
     def notClosing = for (c <- all if c.state != Channel.CLOSING) yield c
 
     def canSendNow(msat: Long) = for {
+      // Open AND online AND can handle amount + on-chain fee
       chan <- all if isOperational(chan) && chan.state == OPEN
       feerateMsat <- chan(_.localCommit.spec.feeratePerKw * 1000L)
       if estimateCanSend(chan) - feerateMsat >= msat
@@ -121,7 +122,7 @@ class WalletApp extends Application { me =>
 
     def frozenInFlightHashes = for {
       chan <- all if chan.state == Channel.CLOSING
-      theirDust <- chan(_.remoteParams.dustLimitSatoshis)
+      theirDust <- chan(_.remoteParams.dustLimitSatoshis).toList
       // Frozen means a channel has been broken and we have a non-dust HTLC
       // which will either be taken by peer with us getting a payment preimage
       // or it will eventually be taken by us and thus fulfilled on-chain
