@@ -3,6 +3,7 @@ package com.lightning.walletapp
 import R.string._
 import spray.json._
 import org.bitcoinj.core._
+
 import scala.concurrent.duration._
 import com.lightning.walletapp.ln._
 import com.lightning.walletapp.Utils._
@@ -15,7 +16,6 @@ import com.lightning.walletapp.ln.PaymentInfo._
 import com.lightning.walletapp.lnutils.JsonHttpUtils._
 import com.lightning.walletapp.lnutils.ImplicitJsonFormats._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
-
 import rx.lang.scala.{Observable => Obs}
 import org.bitcoinj.wallet.{SendRequest, Wallet}
 import fr.acinq.bitcoin.Crypto.{Point, PublicKey}
@@ -23,21 +23,32 @@ import android.content.{ClipData, ClipboardManager, Context}
 import com.google.common.util.concurrent.Service.State.{RUNNING, STARTING}
 import com.lightning.walletapp.ln.wire.LightningMessageCodecs.RGB
 import com.lightning.walletapp.lnutils.olympus.OlympusWrap
+
 import collection.JavaConverters.seqAsJavaListConverter
 import com.lightning.walletapp.lnutils.olympus.CloudAct
 import java.util.concurrent.TimeUnit.MILLISECONDS
+
 import org.bitcoinj.wallet.KeyChain.KeyPurpose
 import org.bitcoinj.net.discovery.DnsDiscovery
 import org.bitcoinj.wallet.Wallet.BalanceType
+import com.google.common.net.InetAddresses
 import fr.acinq.bitcoin.Hash.Zeroes
 import org.bitcoinj.uri.BitcoinURI
-import java.net.InetSocketAddress
+import java.net.{InetAddress, InetSocketAddress}
+
 import fr.acinq.bitcoin.Crypto
 import android.app.Application
-import android.widget.Toast
 import java.util.Collections
+
+import android.widget.Toast
+
 import scala.util.Try
 import java.io.File
+
+import android.net.Uri
+
+import android.net.Uri
+>>>>>>> 67b10c2... Connect to one of nodes running on olympus servers
 
 
 class WalletApp extends Application { me =>
@@ -300,7 +311,16 @@ class WalletApp extends Application { me =>
       wallet.addTransactionConfidenceEventListener(ChannelManager.chainEventsListener)
       wallet.addCoinsSentEventListener(ChannelManager.chainEventsListener)
       wallet.autosaveToFile(walletFile, 400, MILLISECONDS, null)
-      wallet setCoinSelector new MinDepthReachedCoinSelector
+      wallet.setCoinSelector(new MinDepthReachedCoinSelector)
+
+      try {
+        Notificator.removeResyncNotification
+        val shouldReschedule = ChannelManager.notClosingOrRefunding.exists(hasReceivedPayments)
+        val fastPeer = InetAddress getByName Uri.parse(OlympusWrap.clouds.head.connector.url).getHost
+        if (shouldReschedule) Notificator.scheduleResyncNotificationOnceAgain
+        peerGroup addAddress new PeerAddress(app.params, fastPeer, 8333)
+      } catch none
+
       peerGroup addPeerDiscovery new DnsDiscovery(params)
       peerGroup.setMinRequiredProtocolVersion(70015)
       peerGroup.setDownloadTxDependencies(0)
@@ -308,12 +328,7 @@ class WalletApp extends Application { me =>
       peerGroup.setMaxConnections(5)
       peerGroup.addWallet(wallet)
 
-      Notificator.removeResyncNotification
-      val shouldReschedule = ChannelManager.notClosingOrRefunding.exists(hasReceivedPayments)
-      if (shouldReschedule) Notificator.scheduleResyncNotificationOnceAgain
-
       ConnectionManager.listeners += ChannelManager.socketEventsListener
-      // Passing bitcoinj listener ensures onChainDownloadStarted is called
       startBlocksDownload(ChannelManager.chainEventsListener)
       // Try to clear act leftovers if no channels left
       OlympusWrap tellClouds OlympusWrap.CMDStart
