@@ -225,7 +225,7 @@
         <item>Закрыть в этот кошелек</item>
     </array>
 
-    <string name="ln_ops_chan_amount_status">комиссия %1$s - %2$s</string>
+    <string name="ln_ops_chan_amount_status">%1$s - %2$s комиссии</string>
     <string name="ln_ops_chan_refund_status"><![CDATA[<br><br><font color=#999999>Отложенные транзакции</font><br>]]></string>
     <string name="ln_ops_chan_commit_status"><![CDATA[<a href=https://testnet.smartbit.com.au/tx/%1$s>Посмотреть состояние</a><br>%2$s<br>комиссия %3$s]]></string>
 
