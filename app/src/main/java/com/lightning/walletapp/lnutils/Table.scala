@@ -4,8 +4,9 @@ import spray.json._
 import android.database.sqlite._
 import com.lightning.walletapp.ln.PaymentInfo._
 import com.lightning.walletapp.lnutils.ImplicitJsonFormats._
+
+import com.lightning.walletapp.ln.Tools.{none, runAnd}
 import com.lightning.walletapp.lnutils.olympus.CloudData
-import com.lightning.walletapp.ln.Tools.runAnd
 import android.content.Context
 import android.net.Uri
 
@@ -88,9 +89,10 @@ object PaymentTable extends Table {
   val newVirtualSql = s"INSERT INTO $fts$table ($search, $hash) VALUES (?, ?)"
 
   // Selecting
+  val selectSql = s"SELECT * FROM $table WHERE $hash = ?"
+  val selectTotalSql = s"SELECT $lastMsat FROM $table WHERE $chanId = ? AND $incoming = ?"
   val selectRecentSql = s"SELECT * FROM $table WHERE $status IN ($WAITING, $SUCCESS, $FAILURE, $FROZEN) ORDER BY $id DESC LIMIT 48"
   val searchSql = s"SELECT * FROM $table WHERE $hash IN (SELECT $hash FROM $fts$table WHERE $search MATCH ? LIMIT 24)"
-  val selectSql = s"SELECT * FROM $table WHERE $hash = ?"
 
   // Updating, creating
   val updOkOutgoingSql = s"UPDATE $table SET $status = $SUCCESS, $preimage = ?, $chanId = ? WHERE $hash = ?"
@@ -138,6 +140,7 @@ class LNOpenHelper(context: Context, name: String)
   extends SQLiteOpenHelper(context, name, null, 2) {
 
   val base = getWritableDatabase
+  def onUpgrade(dbs: SQLiteDatabase, v0: Int, v1: Int) = none
   def change(sql: String, params: Any*) = base.execSQL(sql, params.map(_.toString).toArray)
   def select(sql: String, params: Any*) = base.rawQuery(sql, params.map(_.toString).toArray)
   def sqlPath(tbl: String) = Uri parse s"sqlite://com.lightning.walletapp/table/$tbl"
@@ -159,11 +162,5 @@ class LNOpenHelper(context: Context, name: String)
     val emptyData = CloudData(info = None, tokens = Vector.empty, acts = Vector.empty).toJson.toString
     val test: Array[AnyRef] = Array("test-server-1", "http://192.210.203.16:9003", emptyData, "1", "0", "0")
     dbs.execSQL(OlympusTable.newSql, test)
-  }
-
-  import PaymentTable.{table, chanId}
-  def onUpgrade(dbs: SQLiteDatabase, v0: Int, v1: Int) = if (v0 == 1 & v1 == 2) {
-    dbs.execSQL(s"""ALTER TABLE $table ADD $chanId STRING DEFAULT "00" NOT NULL;""")
-    dbs.execSQL(s"""CREATE INDEX IF NOT EXISTS idx2$table ON $table ($chanId);""")
   }
 }
