@@ -50,8 +50,8 @@
 
     <string name="tokens_warn"><![CDATA[
         Пожалуйста, учите: этот кошелек использует <a href=http://lightning-wallet.com/storage-tokens#storage-tokens>платные талоны</a>
-        для хранения зашифрованных бэкапов ваших каналов на сервере Olympus.<br><br>Автоматический платеж-Молния в сумме <i>%1$s</i> купит
-        50 талонов как только вы откроете первый канал.<br><br>Эти талоны защитят вас от случайной потери денег в каналах
+        для хранения зашифрованных бэкапов ваших каналов.<br><br>Автоматический платеж-Молния в сумме <i>%1$s</i> купит 50 талонов
+        как только вы откроете первый канал.<br><br>Эти талоны защитят вас от случайной потери денег в каналах
     ]]></string>
 
     <string name="zygote_details"><![CDATA[
@@ -234,13 +234,13 @@
     <string name="ln_ops_chan_unilateral_status_dead"><![CDATA[%1$s<br>= %2$s отменена]]></string>
     <string name="ln_ops_chan_unilateral_status_done"><![CDATA[%1$s<br>= %2$s получена]]></string>
     <string name="ln_ops_chan_unilateral_status_left"><![CDATA[%2$s<br>= %3$s %1$s]]></string>
-    <string name="ln_total_value">Всего отправлено %1$s</string>
+    <string name="ln_total_value">Отправлено %1$s</string>
 
     <array name="ln_total_payments">
         <item><![CDATA[Нет отправленных платежей]]></item>
-        <item><![CDATA[Всего отправлен %1$s платеж]]></item>
-        <item><![CDATA[Всего отправлено %1$s платежа]]></item>
-        <item><![CDATA[Всего отправлено %1$s платежей]]></item>
+        <item><![CDATA[Отправлен %1$s платеж]]></item>
+        <item><![CDATA[Отправлено %1$s платежа]]></item>
+        <item><![CDATA[Отправлено %1$s платежей]]></item>
     </array>
 
     <array name="ln_status_left_blocks">
