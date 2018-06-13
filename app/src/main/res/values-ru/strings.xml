@@ -238,9 +238,9 @@
 
     <array name="ln_total_payments">
         <item><![CDATA[Нет отправленных платежей]]></item>
-        <item><![CDATA[Отправлен %1$s платеж]]></item>
-        <item><![CDATA[Отправлено %1$s платежа]]></item>
-        <item><![CDATA[Отправлено %1$s платежей]]></item>
+        <item><![CDATA[Всего отправлен %1$s платеж]]></item>
+        <item><![CDATA[Всего отправлено %1$s платежа]]></item>
+        <item><![CDATA[Всего отправлено %1$s платежей]]></item>
     </array>
 
     <array name="ln_status_left_blocks">
