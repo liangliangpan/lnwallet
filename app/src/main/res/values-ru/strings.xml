@@ -68,7 +68,7 @@
     <string name="olympus_add">Добавить сервер</string>
     <string name="olympus_backup">Бэкап-сервер</string>
 
-	<array name="olympus_tokens_left">
+    <array name="olympus_tokens_left">
         <item><![CDATA[<small><i>талонов нет</i></small>]]></item>
         <item><![CDATA[<small><i>есть %1$d талон</i></small>]]></item>
         <item><![CDATA[<small><i>есть %1$d талона</i></small>]]></item>
@@ -125,11 +125,11 @@
 
     <string name="ln_incoming_title"><![CDATA[<font color=#0099FE><strong>Платеж-Молния</strong></font><br>%1$s<br><br>получено %2$s<br><small>%3$s по текущему курсу</small>]]></string>
     <string name="ln_outgoing_title_no_fee"><![CDATA[<font color=#0099FE><strong>Платеж-Молния</strong></font><br>%1$s<br><br>отправлено %2$s<br><small>%3$s по текущему курсу</small>]]></string>
-    <string name="ln_outgoing_title"><![CDATA[<font color=#0099FE><strong>Платеж-Молния</strong></font><br>%1$s<br><br>отправлено %2$s<br>комса %3$s = %4$.2f%%<br><small>%5$s по текущему курсу</small>]]></string>
+    <string name="ln_outgoing_title"><![CDATA[<font color=#0099FE><strong>Платеж-Молния</strong></font><br>%1$s<br><br>отправлено %2$s<br><small>%3$s по текущему курсу</small><br>комса %4$s = %5$.2f%%]]></string>
 
     <string name="btc_incoming_title"><![CDATA[<font color=#FF9900><strong>Биткоин-транзакция</strong></font><br>%1$s<br><br>получено %2$s<br><small>%3$s по текущему курсу</small>]]></string>
     <string name="btc_outgoing_title_no_fee"><![CDATA[<font color=#FF9900><strong>Биткоин-транзакция</strong></font><br>%1$s<br><br>отправлено %2$s<br><small>%3$s по текущему курсу</small>]]></string>
-    <string name="btc_outgoing_title"><![CDATA[<font color=#FF9900><strong>Биткоин-транзакция</strong></font><br>%1$s<br><br>отправлено %2$s<br>комса %3$s = %4$.2f%%<br><small>%5$s по текущему курсу</small>]]></string>
+    <string name="btc_outgoing_title"><![CDATA[<font color=#FF9900><strong>Биткоин-транзакция</strong></font><br>%1$s<br><br>отправлено %2$s<br><small>%3$s по текущему курсу</small><br>комса %4$s = %5$.2f%%]]></string>
 
     <string name="txs_sum_out"><![CDATA[<font color=#E31300>%1$s</font>]]></string>
     <string name="txs_sum_in"><![CDATA[<font color=#76B041>%1$s</font>]]></string>
@@ -150,7 +150,7 @@
     <string name="send_scan_qr">Сканировать QR-код</string>
     <string name="send_paste">Вставить запрос</string>
 
-	<string name="ln_receive_option"><![CDATA[<font color=#0099FE>Платеж-Молния</font><small><br><br>%1$s</small>]]></string>
+    <string name="ln_receive_option"><![CDATA[<font color=#0099FE>Платеж-Молния</font><small><br><br>%1$s</small>]]></string>
     <string name="ln_receive_ok"><![CDATA[<font color=#999999>создать QR-код с одноразовым запросом для получения быстрых оффчейн платежей</font>]]></string>
     <string name="btc_receive_option"><![CDATA[<font color=#FF9900>Биткоин-транзакция</font><font color=#999999><small><br><br>создать QR-код с обычным адресом для получения ончейн Биткоин-транзакций</small></font>]]></string>
     <string name="ln_receive_reserve"><![CDATA[<font color=#333333>входящие платежи-Молнии пока невозможны потому что для начала вам нужно потратить хотя-бы</font> %1$s <font color=#333333>чтобы освободить место для получения денег</font>]]></string>
@@ -206,7 +206,7 @@
     <string name="ln_ops_chan_negotiations"><![CDATA[<font color=#FF9900>%1$s</font><br>%2$s<br><br>открыт <font color=#999999>%3$s</font><br>емкость %4$s<br>баланс %5$s<br><br>%6$s]]></string>
     <string name="ln_ops_chan_unilateral_closing"><![CDATA[%1$s<br>%2$s<br>%3$s<br><br>открыт <font color=#999999>%4$s</font><br>закрыт <font color=#999999>%5$s</font><br>емкость %6$s<br><br>%7$s]]></string>
     <string name="ln_ops_chan_bilateral_closing"><![CDATA[%1$s<br><font color=#999999><i>кооперативно</i></font><br>%2$s<br><br>открыт <font color=#999999>%3$s</font><br>закрыт <font color=#999999>%4$s</font><br>емкость %5$s<br>возврат %6$s<br><br>%7$s]]></string>
-    <string name="ln_ops_chan_opening"><![CDATA[<font color=#FF9900>%1$s</font><br>%2$s<br><br>открыт <font color=#999999>%3$s</font><br>емкость %4$s<br>нужно %5$s<br><br><a href=https://testnet.smartbit.com.au/tx/%6$s>Посмотреть статус</a><br>%7$s]]></string>
+    <string name="ln_ops_chan_opening"><![CDATA[<font color=#FF9900>%1$s</font><br>%2$s<br><br>открыт <font color=#999999>%3$s</font><br>емкость %4$s<br>нужно %5$s<br><br><a href=https://smartbit.com.au/tx/%6$s>Посмотреть статус</a><br>%7$s]]></string>
     <string name="ln_ops_chan_open"><![CDATA[<font color=#76B041>%1$s</font><br>%2$s<br><br>емкость %3$s<br>баланс %4$s<br>лимит %5$s<br><small>комиссия %6$s</small><br><br>%7$s<br><small>%8$s<br>%9$s</small>]]></string>
 
     <string name="ln_chan_close_inflight_details"><![CDATA[&#9888; <font color=#FF9900>В канале есть зависшие платежи</font> поэтому кооперативное закрытие будет отложено пока они не исчезнут, все еще хотите продолжить?]]></string>
@@ -227,16 +227,16 @@
 
     <string name="ln_ops_chan_amount_status">%1$s - %2$s комиссии</string>
     <string name="ln_ops_chan_refund_status"><![CDATA[<br><br><font color=#999999>Отложенные транзакции</font><br>]]></string>
-    <string name="ln_ops_chan_commit_status"><![CDATA[<a href=https://testnet.smartbit.com.au/tx/%1$s>Посмотреть состояние</a><br>%2$s<br>комиссия %3$s]]></string>
+    <string name="ln_ops_chan_commit_status"><![CDATA[<a href=https://smartbit.com.au/tx/%1$s>Посмотреть состояние</a><br>%2$s<br>комиссия %3$s]]></string>
 
     <string name="ln_ops_unilateral_you"><![CDATA[<font color=#999999><i>с вашей стороны</i></font>]]></string>
     <string name="ln_ops_unilateral_peer"><![CDATA[<font color=#999999><i>со стороны пира</i></font>]]></string>
     <string name="ln_ops_chan_unilateral_status_dead"><![CDATA[%1$s<br>= %2$s отменена]]></string>
     <string name="ln_ops_chan_unilateral_status_done"><![CDATA[%1$s<br>= %2$s получена]]></string>
     <string name="ln_ops_chan_unilateral_status_left"><![CDATA[%2$s<br>= %3$s %1$s]]></string>
-	<string name="ln_total_value">Всего отправлено %1$s</string>
+    <string name="ln_total_value">Всего отправлено %1$s</string>
 
-	<array name="ln_total_payments">
+    <array name="ln_total_payments">
         <item><![CDATA[Нет отправленных платежей]]></item>
         <item><![CDATA[Отправлен %1$s платеж]]></item>
         <item><![CDATA[Отправлено %1$s платежа]]></item>
@@ -257,7 +257,7 @@
         <item><![CDATA[истекает через %1$s блоков]]></item>
     </array>
 
-	<array name="ln_in_flight_payments">
+    <array name="ln_in_flight_payments">
         <item><![CDATA[Нет платежей в пути]]></item>
         <item><![CDATA[%1$s платеж в пути]]></item>
         <item><![CDATA[%1$s платежа в пути]]></item>
