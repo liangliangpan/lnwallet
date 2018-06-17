@@ -146,17 +146,16 @@
 
     <string name="send_scan_qr">Scan a QR code</string>
     <string name="send_paste"><![CDATA[Paste a Bitcoin address<br><font color=#999999><small>or Lightning Payment Request</small></font>]]></string>
-    <string name="ln_send_title"><![CDATA[<font color=#0099FE><strong>Send Lightning payment</strong></font><br><br><small>%1$s</small>]]></string>
+    <string name="ln_send_title"><![CDATA[<font color=#0099FE><strong>Send Lightning payment</strong></font><small><br><br>%1$s</small>]]></string>
     <string name="btc_send_title"><![CDATA[<font color=#FF9900><strong>Send Bitcoin transaction</strong></string></font>]]></string>
 
     <string name="ln_receive_title"><![CDATA[<font color=#0099FE><strong>Receive Lightning payment</strong></font>]]></string>
     <string name="ln_receive_option"><![CDATA[<font color=#0099FE>Lightning payment</font><small><br><br>%1$s</small>]]></string>
-    <string name="btc_receive_option"><![CDATA[<font color=#FF9900>Bitcoin transaction</font><font color=#999999><small><br><br>make a QR-code with on-chain wallet address, can be used to receive regular Bitcoin transactions</small></font>]]></string>
-
-    <string name="ln_receive_reserve"><![CDATA[<font color=#333333>can\'t ask for Lightning payments yet because first you need to spend at least</font> %1$s <font color=#333333>in order to make some space for receiving</font>]]></string>
-    <string name="ln_receive_6conf"><![CDATA[<font color=#333333>can\'t ask for Lightning payments yet because a funding Bitcoin transaction has not got 6 confirmations</font>]]></string>
-    <string name="ln_receive_no_channels"><![CDATA[<font color=#333333>can\'t ask for Lightning payments yet because no open payment channels are present currently</font>]]></string>
-    <string name="ln_receive_ok"><![CDATA[<font color=#999999>make a QR-code with a Lightning Payment Request, can be used to receive fast off-chain payments</font>]]></string>
+    <string name="btc_receive_option"><![CDATA[<font color=#FF9900>Bitcoin transaction</font><font color=#999999><small><br><br>Make a QR-code with on-chain wallet address, can be used to receive regular Bitcoin transactions</small></font>]]></string>
+    <string name="ln_receive_6conf"><![CDATA[<font color=#333333>Can\'t ask for Lightning payments because your peer is not ready yet. Typically peers become ready once a channel funding Bitcoin transaction gets 6 confirmations</font>]]></string>
+    <string name="ln_receive_reserve"><![CDATA[<font color=#333333>Can\'t ask for Lightning payments yet because first you need to spend at least</font> %1$s <font color=#333333>in order to make some space for receiving</font>]]></string>
+    <string name="ln_receive_ok"><![CDATA[<font color=#999999>Make a QR-code with a Lightning Payment Request, can be used to receive fast off-chain payments</font>]]></string>
+    <string name="ln_receive_no_channels"><![CDATA[<font color=#333333>Can\'t ask for Lightning payments yet because there are no open channels</font>]]></string>
 
     <!-- errors -->
     <string name="err_ln_peer_offline">Could not connect to remote peer at %1$s</string>
