@@ -120,8 +120,8 @@ object PaymentInfoWrap extends PaymentInfoBag with ChannelListener { me =>
     // Save preimage right away, don't wait for their next commitSig
     me updOkOutgoing ok
 
-    inFlightPayments.values.find(_.pr.paymentHash == ok.paymentHash) foreach { rd =>
-      // Make payment searchable + routing optimization: record subroutes in database
+    inFlightPayments get ok.paymentHash foreach { rd =>
+      // Make payment searchable + optimization: record subroutes in database
       db.change(PaymentTable.newVirtualSql, rd.queryText, rd.paymentHashString)
       if (rd.usedRoute.nonEmpty) RouteWrap cacheSubRoutes rd
     }
