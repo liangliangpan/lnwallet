@@ -94,8 +94,8 @@ class WalletApp extends Application { me =>
   object TransData {
     var value: Any = _
     private[this] val prefixes = PaymentRequest.prefixes.values mkString "|"
-    private[this] val lnLink = s"(?im).*?($prefixes)([0-9]{1,}\\w+){1}".r.unanchored
     private[this] val nodeLink = "([a-fA-F0-9]{66})@([a-zA-Z0-9:\\.\\-_]+):([0-9]+)".r
+    private[this] val lnLink = s"(?im).*?($prefixes)([0-9]{1,}[a-z0-9?]+){1}".r.unanchored
 
     def recordValue(rawText: String) = value = rawText match {
       case raw if raw startsWith "bitcoin" => new BitcoinURI(params, raw)
