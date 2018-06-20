@@ -166,8 +166,7 @@ class WalletApp extends Application { me =>
 
         if (currentBlocksLeft < 1) {
           // Send out pending payments and report best height to channels
-          val cmdBestHeight = CMDBestHeight(broadcaster.currentHeight)
-          for (c <- all) c process cmdBestHeight
+          for (c <- all) c process CMDBestHeight(broadcaster.currentHeight)
           PaymentInfoWrap.resolvePending
         }
       }
