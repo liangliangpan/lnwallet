@@ -415,11 +415,6 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
         host onFail s"${remote.exception.getMessage}\n\n${history getOrElse new String}"
     }
 
-    override def settled(cs: Commitments) = for {
-      Htlc(_, add) \ _ <- cs.localCommit.spec.fulfilled
-      rd <- PaymentInfoWrap.inFlightPayments get add.paymentHash
-    } if (rd.pr.closeAppOnSuccess) host delayUI host.finish
-
     override def onException = {
       case _ \ CMDAddImpossible(_, code) =>
         // Non-fatal: can't add this payment, inform user why
@@ -511,14 +506,8 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
           }
         }
 
-        def payAndQuit(alert: AlertDialog) = {
-          // Send payment and finish on success
-          pr.closeAppOnSuccess = true
-          sendAttempt(alert)
-        }
-
-        val bld = baseBuilder(app.getString(ln_send_title).format(me getDescription pr.description).html, content)
-        mkCheckFormNeutral(sendAttempt, none, payAndQuit, bld, dialog_pay, dialog_cancel, dialog_pay_quit)
+        val txt = app.getString(ln_send_title).format(me getDescription pr.description)
+        mkCheckForm(sendAttempt, none, baseBuilder(txt.html, content), dialog_pay, dialog_cancel)
         for (initialPaymentAmountMsat <- pr.amount) rateManager setSum Try(initialPaymentAmountMsat)
       }
     }
@@ -583,7 +572,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
     val boost = coloredIn(wrap.valueDelta minus newFee)
     // Unlike normal transaction this one uses a whole half of current feeSix
     val userWarn = baseBuilder(app.getString(boost_details).format(current, boost).html, null)
-    mkForm(ok = <(replace, onError)(none), none, userWarn, dialog_ok, dialog_cancel)
+    mkForm(none, <(replace, onError)(none), userWarn, dialog_cancel, dialog_boost)
 
     def replace: Unit = {
       // Check once again whether it still needs boosting
