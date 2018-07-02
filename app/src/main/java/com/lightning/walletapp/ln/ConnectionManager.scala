@@ -68,7 +68,8 @@ object ConnectionManager {
       lastMsg = System.currentTimeMillis
 
       message match {
-        case cm: ChannelMessage => MessageItem.record(cm.channelId, IncomingMessage(System.currentTimeMillis, cm))
+        case cm: ChannelMessage => MessageItem.record(ann.nodeId, IncomingMessage(System.currentTimeMillis, cm))
+        case their: Init => MessageItem.record(ann.nodeId, IncomingMessage(System.currentTimeMillis, their))
         case _ =>
       }
 
@@ -109,14 +110,13 @@ trait MessageItem {
 
 object MessageItem {
   import scala.collection.mutable
-  val history = mutable.Map.empty[BinaryData, Vector[MessageItem]]
+  val history = mutable.Map.empty[BinaryData, Vector[MessageItem]] withDefaultValue Vector.empty
+  def getHistoryString(nodeId: BinaryData) = history(nodeId).map(_.toString).mkString("\n\n")
 
-  def record(chanId: BinaryData, item: MessageItem) = {
-    if (history contains chanId) history(chanId) = item +: history(chanId) take 20
-    else history(chanId) = Vector(item)
+  def record(nodeId: BinaryData, item: MessageItem) = {
+    if (history contains nodeId) history(nodeId) = item +: history(nodeId) take 20
+    else history(nodeId) = Vector(item)
   }
-
-  def getHistoryString(chanId: BinaryData) = history(chanId).map(_.toString).mkString("\n\n")
 }
 
 case class IncomingMessage(stamp: Long, message: LightningMessage) extends MessageItem

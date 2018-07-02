@@ -412,8 +412,8 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
     override def onProcessSuccess = {
       case (chan, _, remote: wire.Error) =>
-        val history = chan(cs => MessageItem getHistoryString cs.channelId)
-        host onFail s"${remote.exception.getMessage}\n\n${history getOrElse new String}"
+        val text = s"${remote.exception.getMessage}\n\n${MessageItem getHistoryString chan.data.announce.nodeId}"
+        UITask(mkCheckForm(_ => app setBuffer text, none, baseBuilder(null, text), dialog_ok, dialog_cancel)).run
     }
 
     override def onException = {
