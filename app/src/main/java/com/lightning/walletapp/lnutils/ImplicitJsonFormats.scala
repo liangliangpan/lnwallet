@@ -29,8 +29,8 @@ object ImplicitJsonFormats extends DefaultJsonProtocol { me =>
 
   val json2String = (_: JsValue).convertTo[String]
   def taggedJsonFmt[T](base: JsonFormat[T], tag: String): JsonFormat[T] = new JsonFormat[T] {
-    def write(unserialized: T): JsValue = JsObject(base.write(unserialized).asJsObject.fields + extension)
-    def read(serialized: JsValue): T = base read serialized
+    def write(unserialized: T) = JsObject(base.write(unserialized).asJsObject.fields + extension)
+    def read(serialized: JsValue) = base read serialized
     private val extension = "tag" -> JsString(tag)
   }
 
