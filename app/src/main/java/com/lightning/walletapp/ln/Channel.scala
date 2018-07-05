@@ -126,12 +126,6 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
       // OPEN MODE
 
 
-      case (some: HasCommitments, isa: InetSocketAddress, OFFLINE) =>
-        // Node was OFFLINE, we have initiated a DNS lookup and discovered a new address
-        val d1 = some.modify(_.announce.addresses).setTo(NodeAddress(isa) :: Nil)
-        data = me STORE d1
-
-
       case (norm: NormalData, hop: Hop, OPEN | OFFLINE) =>
         // Got either an empty Hop with shortChannelId or a final one
         // do not trigger listeners and silently update a current state
@@ -391,6 +385,12 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
           Some apply Scalar(yourLastPerCommitmentSecret), Some apply myCurrentPerCommitmentPoint)
 
 
+      case (some: HasCommitments, newIsa: InetSocketAddress, OFFLINE) =>
+        // Node was OFFLINE, we have initiated a DNS lookup and discovered a new address
+        val d1 = some.modify(_.announce.addresses).setTo(NodeAddress(newIsa) :: Nil)
+        data = me STORE d1
+
+
       case (wait: WaitFundingDoneData, CMDOffline, WAIT_FUNDING_DONE) => BECOME(wait, OFFLINE)
       case (negs: NegotiationsData, CMDOffline, NEGOTIATIONS) => BECOME(negs, OFFLINE)
       case (norm: NormalData, CMDOffline, OPEN) => BECOME(norm, OFFLINE)
@@ -577,7 +577,7 @@ object Channel {
 
 case class ChanReport(chan: Channel, cs: Commitments) {
   def finalCanSend = estimateCanSend(chan) - softReserve.amount * 1000L
-  val softReserve: Satoshi = cs.commitInput.txOut.amount / 25
+  val softReserve: Satoshi = cs.commitInput.txOut.amount / 50
 }
 
 trait ChannelListener {
