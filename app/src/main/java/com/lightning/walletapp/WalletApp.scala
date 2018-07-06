@@ -318,14 +318,9 @@ class WalletApp extends Application { me =>
 
       try {
         Notificator.removeResyncNotification
-        // Only reschedule a delayed notification if we have a receiving chans
-        if (ChannelManager.notClosingOrRefunding exists hasReceivedPayments)
-          Notificator.scheduleResyncNotificationOnceAgain
-
-        // Set fast peer and schedule dns lookup
-        val fastPeer = Uri.parse(OlympusWrap.clouds.head.connector.url)
-        peerGroup addAddress new PeerAddress(app.params, InetAddress getByName fastPeer.getHost, 8333)
+        val shouldReSchedule = ChannelManager.notClosingOrRefunding exists hasReceivedPayments
         obsOnIO.delay(30.seconds).map(_ => ChannelManager.updateChangedIPs).foreach(none, Tools.errlog)
+        if (shouldReSchedule) Notificator.scheduleResyncNotificationOnceAgain
       } catch none
 
       peerGroup addPeerDiscovery new DnsDiscovery(params)

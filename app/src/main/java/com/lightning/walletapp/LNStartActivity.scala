@@ -72,10 +72,8 @@ class FragLNStart extends Fragment with SearchBar { me =>
     val toolbar = view.findViewById(R.id.toolbar).asInstanceOf[android.support.v7.widget.Toolbar]
     var nodes = Vector.empty[StartNodeView]
 
-    val ohHiMarkKey = PublicKey("03dc39d7f43720c2c0f86778dfd2a77049fa4a44b4f0a8afb62f3921567de41375")
     val enduranceKey = PublicKey("03933884aaf1d6b108397e5efe5c86bcf2d8ca8d2f700eda99db9214fc2712b134")
     val endurance = HardcodedNodeView(app.mkNodeAnnouncement(enduranceKey, "34.250.234.192", 9735), "<i>ACINQ node</i>")
-    val ohHiMark = HardcodedNodeView(app.mkNodeAnnouncement(ohHiMarkKey, "192.210.203.16", 9735), "<i>Bitcoin Lightning Node</i>")
 
     val adapter = new BaseAdapter {
       def getView(pos: Int, savedView: View, par: ViewGroup) = {
@@ -101,9 +99,8 @@ class FragLNStart extends Fragment with SearchBar { me =>
       me.react = addWork
 
       def process(ask: String, res: AnnounceChansNumVec) = {
-        val remoteNodeViewWraps = res map RemoteNodeView.apply
-        val augmentedViews = endurance +: ohHiMark +: remoteNodeViewWraps
-        nodes = if (ask.isEmpty) augmentedViews else remoteNodeViewWraps
+        val remoteNodeViewWraps = for (announce <- res) yield RemoteNodeView(announce)
+        nodes = if (ask.isEmpty) endurance +: remoteNodeViewWraps else remoteNodeViewWraps
         host.UITask(adapter.notifyDataSetChanged).run
       }
     }
