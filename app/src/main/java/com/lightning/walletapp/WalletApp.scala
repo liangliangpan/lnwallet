@@ -324,7 +324,7 @@ class WalletApp extends Application { me =>
       try {
         Notificator.removeResyncNotification
         val shouldReSchedule = ChannelManager.notClosingOrRefunding exists hasReceivedPayments
-        obsOnIO.delay(30.seconds).map(_ => ChannelManager.updateChangedIPs).foreach(none, Tools.errlog)
+        obsOnIO.delay(30.seconds).map(_ => ChannelManager.updateChangedIPs).repeat foreach none
         if (shouldReSchedule) Notificator.scheduleResyncNotificationOnceAgain
       } catch none
 
