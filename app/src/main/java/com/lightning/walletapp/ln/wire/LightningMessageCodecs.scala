@@ -348,17 +348,10 @@ object LightningMessageCodecs { me =>
 
   // Not in a spec
 
-  private val walletZygote =
-    (uint16 withContext "v") ::
-      (varsizebinarydataLong withContext "db") ::
-      (varsizebinarydataLong withContext "wallet") ::
-      (varsizebinarydataLong withContext "chain")
-
   private val aesZygote =
     (uint16 withContext "v") ::
       (varsizebinarydataLong withContext "iv") ::
       (varsizebinarydataLong withContext "ciphertext")
 
-  val walletZygoteCodec = walletZygote.as[WalletZygote]
   val aesZygoteCodec = aesZygote.as[AESZygote]
 }

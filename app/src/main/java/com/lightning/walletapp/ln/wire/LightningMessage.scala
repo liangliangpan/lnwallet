@@ -146,6 +146,5 @@ case object NodeAddress {
 }
 
 // Not in a spec
-case class OutRequest(sat: Long, badNodes: Set[String], badChans: Set[Long], from: Set[String], to: String)
-case class WalletZygote(v: Int, db: BinaryData, wallet: BinaryData, chain: BinaryData)
 case class AESZygote(v: Int, iv: BinaryData, ciphertext: BinaryData)
+case class OutRequest(sat: Long, badNodes: Set[String], badChans: Set[Long], from: Set[String], to: String)
