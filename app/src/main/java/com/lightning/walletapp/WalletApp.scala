@@ -93,16 +93,25 @@ class WalletApp extends Application { me =>
     NodeAnnouncement(sig, "", 0L, nodeId, nodeColors, host, NodeAddress(nodeAddress) :: Nil)
   }
 
-  object TransData {
-    var value: Any = _
+  object TransData { self =>
+    var value: Any = new String
     private[this] val prefixes = PaymentRequest.prefixes.values mkString "|"
     private[this] val nodeLink = "([a-fA-F0-9]{66})@([a-zA-Z0-9:\\.\\-_]+):([0-9]+)".r
     private[this] val lnLink = s"(?im).*?($prefixes)([0-9]{1,}[a-z0-9]+){1}".r.unanchored
 
+    private def resolveURI(uri: BitcoinURI) = {
+      // We need to make some beforehand checks to fallback to onchain right away
+      val hasChans = ChannelManager.notClosingOrRefunding exists isOperational
+      val prOpt = Option(uri.getLightningRequest) map PaymentRequest.read
+      val canOffChain = hasChans && prOpt.exists(_.isFresh)
+      if (canOffChain) prOpt.get else uri
+    }
+
     def recordValue(rawText: String) = value = rawText match {
-      case raw if raw startsWith "bitcoin" => new BitcoinURI(params, raw)
-      case lnLink(pre, x) if notMixedCase(s"$pre$x") => PaymentRequest read s"$pre$x".toLowerCase
+      case _ if rawText startsWith "bitcoin" => self resolveURI new BitcoinURI(params, rawText)
+      case _ if rawText startsWith "BITCOIN" => self resolveURI new BitcoinURI(params, rawText.toLowerCase)
       case nodeLink(key, host, port) => mkNodeAnnouncement(PublicKey(key), host, port.toInt)
+      case lnLink(prefix, req) => PaymentRequest read s"$prefix$req".toLowerCase
       case _ => toAddress(rawText)
     }
   }
@@ -324,7 +333,7 @@ class WalletApp extends Application { me =>
       try {
         Notificator.removeResyncNotification
         val shouldReSchedule = ChannelManager.notClosingOrRefunding exists hasReceivedPayments
-        obsOnIO.delay(30.seconds).map(_ => ChannelManager.updateChangedIPs).repeat foreach none
+        obsOnIO.delay(30.seconds).map(_ => ChannelManager.updateChangedIPs).foreach(none)
         if (shouldReSchedule) Notificator.scheduleResyncNotificationOnceAgain
       } catch none
 
