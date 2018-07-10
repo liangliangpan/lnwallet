@@ -22,7 +22,7 @@ import android.app.AlertDialog
 import java.util.TimerTask
 import android.os.Bundle
 
-import fr.acinq.bitcoin.{BinaryData, MilliSatoshi, Satoshi, Script}
+import fr.acinq.bitcoin.{BinaryData, MilliSatoshi, Script}
 import org.bitcoinj.core.{Coin, TransactionOutput}
 import android.widget.{ImageButton, TextView}
 import scala.util.{Failure, Success, Try}
@@ -162,7 +162,7 @@ class LNStartFundActivity extends TimerActivity { me =>
       freshChan.listeners -= openListener
       ConnectionManager.listeners -= openListener
       // Worker may have already been automatically removed on connection failure
-      try ConnectionManager.connections(announce.nodeId).disconnect catch none
+      ConnectionManager.connections.get(announce.nodeId).foreach(_.disconnect)
       finish
     }
 

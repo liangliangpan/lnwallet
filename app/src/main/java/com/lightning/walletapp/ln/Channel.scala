@@ -5,7 +5,6 @@ import com.lightning.walletapp.ln.wire._
 import com.lightning.walletapp.ln.Channel._
 import com.lightning.walletapp.ln.PaymentInfo._
 import java.util.concurrent.Executors
-import java.net.InetSocketAddress
 import fr.acinq.eclair.UInt64
 
 import com.lightning.walletapp.ln.crypto.{Generators, ShaChain, ShaHashesWithIndex, Sphinx}
@@ -385,10 +384,10 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
           Some apply Scalar(yourLastPerCommitmentSecret), Some apply myCurrentPerCommitmentPoint)
 
 
-      case (some: HasCommitments, newIsa: InetSocketAddress, OFFLINE) =>
-        // Node was OFFLINE, we have initiated a DNS lookup and discovered a new address
-        val d1 = some.modify(_.announce.addresses).setTo(NodeAddress(newIsa) :: Nil)
-        data = me STORE d1
+      case (some: HasCommitments, newAnn: NodeAnnouncement, OFFLINE)
+        if some.announce.nodeId == newAnn.nodeId && Announcements.checkSig(newAnn) =>
+        // Node was OFFLINE for a long time so we have initiated a new announcement search
+        data = me STORE some.modify(_.announce).setTo(newAnn)
 
 
       case (wait: WaitFundingDoneData, CMDOffline, WAIT_FUNDING_DONE) => BECOME(wait, OFFLINE)

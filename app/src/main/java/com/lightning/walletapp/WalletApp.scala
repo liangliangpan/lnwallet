@@ -18,9 +18,7 @@ import com.lightning.walletapp.lnutils.ImplicitJsonFormats._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
 
 import rx.lang.scala.{Observable => Obs}
-import android.net.{ConnectivityManager, Uri}
 import org.bitcoinj.wallet.{SendRequest, Wallet}
-import java.net.{InetAddress, InetSocketAddress}
 import fr.acinq.bitcoin.Crypto.{Point, PublicKey}
 import fr.acinq.bitcoin.{Crypto, MilliSatoshi, Satoshi}
 import android.content.{ClipData, ClipboardManager, Context}
@@ -32,8 +30,10 @@ import java.util.concurrent.TimeUnit.MILLISECONDS
 import org.bitcoinj.wallet.KeyChain.KeyPurpose
 import org.bitcoinj.net.discovery.DnsDiscovery
 import org.bitcoinj.wallet.Wallet.BalanceType
+import android.net.ConnectivityManager
 import fr.acinq.bitcoin.Hash.Zeroes
 import org.bitcoinj.uri.BitcoinURI
+import java.net.InetSocketAddress
 import android.app.Application
 import java.util.Collections
 import android.widget.Toast
@@ -98,6 +98,7 @@ class WalletApp extends Application { me =>
     private[this] val prefixes = PaymentRequest.prefixes.values mkString "|"
     private[this] val nodeLink = "([a-fA-F0-9]{66})@([a-zA-Z0-9:\\.\\-_]+):([0-9]+)".r
     private[this] val lnLink = s"(?im).*?($prefixes)([0-9]{1,}[a-z0-9]+){1}".r.unanchored
+    private[this] val exFunder = "(externalfunder):([a-z0-9]+)".r
 
     private def resolveURI(uri: BitcoinURI) = {
       val hasChans = ChannelManager.notClosing.exists(isOperational)
@@ -111,6 +112,7 @@ class WalletApp extends Application { me =>
       case _ if rawText startsWith "BITCOIN" => self resolveURI new BitcoinURI(params, rawText.toLowerCase)
       case nodeLink(key, host, port) => mkNodeAnnouncement(PublicKey(key), host, port.toInt)
       case lnLink(prefix, req) => PaymentRequest read s"$prefix$req".toLowerCase
+      case exFunder(_, paramsHex) => to[Started](paramsHex.hex2asci)
       case _ => toAddress(rawText)
     }
   }
@@ -138,16 +140,16 @@ class WalletApp extends Application { me =>
 
     def updateChangedIPs = for {
       chan <- notClosing if chan.state == OFFLINE
-      // Chan is offline and we are online so maybe address has changed
-      con <- Option(connectivityManager.getActiveNetworkInfo) if con.isConnected
-      isa <- Try(dns(chan.data.announce).head)
-    } chan process isa
+      netInfo <- Option(connectivityManager.getActiveNetworkInfo) if netInfo.isConnected
+      res <- retry(OlympusWrap findNodes chan.data.announce.nodeId.toString, pickInc, 2 to 3)
+      announce \ _ <- res take 1
+    } chan process announce
 
     val socketEventsListener = new ConnectionListener {
       override def onMessage(nodeId: PublicKey, msg: LightningMessage) = msg match {
         case update: ChannelUpdate => fromNode(notClosing, nodeId).foreach(_ process update)
-        case error: Error if error.isSyncError => ConnectionManager.connections(nodeId).disconnect
-        case error: Error if error.channelId == Zeroes => fromNode(notClosing, nodeId).foreach(_ process error)
+        case err: Error if err.isSyncError => ConnectionManager.connections.get(nodeId).foreach(_.disconnect)
+        case errAll: Error if errAll.channelId == Zeroes => fromNode(notClosing, nodeId).foreach(_ process errAll)
         case m: ChannelMessage => notClosing.find(chan => chan(_.channelId) contains m.channelId).foreach(_ process m)
         case _ =>
       }

@@ -229,17 +229,6 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
       paymentHash setOnClickListener onButtonTap(host share rd.paymentHashString)
       paymentDetails setText getDescription(info.description).html
 
-      val onChain = for (adr <- rd.pr.fallbackAddress) yield UITask {
-        val fallbackOnChainAddress = Address.fromString(app.params, adr)
-        val tryMSat = Try(rd.pr.amount.get)
-
-        sendBtcPopup(fallbackOnChainAddress) { txid =>
-          // Hide related off-chain payment once on-chain is sent
-          PaymentInfoWrap.updStatus(HIDDEN, rd.pr.paymentHash)
-          PaymentInfoWrap.uiNotify
-        } setSum tryMSat
-      }
-
       if (info.actualStatus == SUCCESS) {
         paymentHash setVisibility View.GONE
         paymentProof setVisibility View.VISIBLE
@@ -274,7 +263,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
         if (info.actualStatus == WAITING) s"$expiryBlocksPart<br>$title" else title
       }
 
-      info.incoming -> onChain match {
+      info.incoming -> onChainRunnable(rd.pr) match {
         case 0 \ Some(runnable) if info.lastMsat == 0 && info.lastExpiry == 0 && info.actualStatus == FAILURE =>
           val bld = baseBuilder(lnTitleOutNoFee.format(humanStatus, coloredOut(info.firstSum), inFiat).html, detailsWrapper)
           mkCheckFormNeutral(none, none, alert => rm(alert)(runnable.run), bld, dialog_cancel, -1, dialog_pay_onchain)
@@ -349,11 +338,14 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
       }
 
       val header = wrap.fee match {
-        // This tx is dead so details do not matter
-        case _ if txDead => sumOut format txsConfs.last
+        // See TxWrap for details on this
+
+        case _ if txDead =>
+          // Details do not matter
+          sumOut format txsConfs.last
 
         case _ if wrap.visibleValue.isPositive =>
-          // This is an incominf tx, do not show a fee
+          // This is an incoming tx, do not show a fee
           val inFiat = msatInFiatHuman(wrap.visibleValue)
           app.getString(btc_incoming_title).format(confs,
             coloredIn(wrap.visibleValue), inFiat)
@@ -372,7 +364,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
             coloredOut(-wrap.visibleValue), inFiat)
       }
 
-      // See if CPFP can be applied
+      // Check if CPFP can be applied
       val notEnough = wrap.valueDelta isLessThan RatesSaver.rates.feeSix
       if (txDepth > 0 || notEnough) showForm(negBuilder(dialog_ok, header.html, lst).create)
       else mkForm(none, boostIncoming(wrap), baseBuilder(header.html, lst), dialog_ok, dialog_boost)
@@ -502,7 +494,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
   def sendPayment(pr: PaymentRequest) =
     if (PaymentRequest.prefixes(chainHash) != pr.prefix) app toast err_general
-    else if (app.ChannelManager.notClosingOrRefunding.isEmpty) proposeOpen(pr)
+    else if (app.ChannelManager.notClosingOrRefunding.isEmpty) proposeAlternative(pr)
     else if (pr.nodeId == nodePublicKey) app toast err_self_payment
     else if (!pr.isFresh) app toast dialog_pr_expired else {
 
@@ -536,18 +528,28 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
       }
     }
 
-  def proposeOpen(pr: PaymentRequest) = {
-    val proceed: RemoteNodeView => Unit = rnv => {
-      def startOpening = host goTo classOf[LNStartFundActivity]
-      val bld = baseBuilder(app getString ln_open_offer, rnv.asString(StartNodeView.nodeView, "<br>").html)
-      mkForm(runAnd(app.TransData.value = rnv)(startOpening), none, bld, dialog_ok, dialog_cancel)
+  def proposeAlternative(pr: PaymentRequest) = {
+    def offerOptions(remoteNodeView: RemoteNodeView) = UITask {
+      val pretty = remoteNodeView.asString(StartNodeView.nodeView, "<br>")
+      val bld = baseBuilder(app getString ln_open_offer, pretty.html)
+
+      def proceed = {
+        app.TransData.value = remoteNodeView
+        host goTo classOf[LNStartFundActivity]
+      }
+
+      onChainRunnable(pr) match {
+        case None => mkForm(proceed, none, bld, dialog_ok, dialog_cancel)
+        case Some(runnable) => mkCheckFormNeutral(alert => rm(alert)(proceed), none,
+          alert => rm(alert)(runnable.run), bld, dialog_ok, dialog_cancel, dialog_pay_onchain)
+      }
     }
 
     for {
       res <- retry(OlympusWrap findNodes pr.nodeId.toString, pickInc, 2 to 3)
       announce \ connects <- res take 1 if announce.nodeId == pr.nodeId
       remoteNodeView = RemoteNodeView(announce -> connects)
-    } UITask(proceed apply remoteNodeView).run
+    } offerOptions(remoteNodeView).run
     app toast ln_receive_nochan
   }
 
@@ -560,6 +562,19 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
   // END LN STUFF
 
   // BTC SEND AND BOOST
+
+  def onChainRunnable(pr: PaymentRequest) =
+    // This content should NOT be executed right away
+    for (adr: String <- pr.fallbackAddress) yield UITask {
+      val fallbackAddress = Address.fromString(app.params, adr)
+      val tryMSat = Try(pr.amount.get)
+
+      sendBtcPopup(fallbackAddress) { txid =>
+        // Hide off-chain payment once on-chain is sent
+        PaymentInfoWrap.updStatus(HIDDEN, pr.paymentHash)
+        PaymentInfoWrap.uiNotify
+      } setSum tryMSat
+    }
 
   def sendBtcPopup(addr: Address)(and: String => Unit): RateManager = {
     val form = host.getLayoutInflater.inflate(R.layout.frag_input_send_btc, null, false)

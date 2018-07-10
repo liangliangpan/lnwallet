@@ -289,8 +289,7 @@ object ImplicitJsonFormats extends DefaultJsonProtocol { me =>
       case unserialiedMessage: FundingTxSigned => unserialiedMessage.toJson
       case unserialiedMessage: BroadcastFundingTx => unserialiedMessage.toJson
       case unserialiedMessage: FundingTxBroadcasted => unserialiedMessage.toJson
-      case unserialiedMessage: FundingTxCreated => unserialiedMessage.toJson
-      case unserialiedMessage: FundingTxAwaits => unserialiedMessage.toJson
+      case unserialiedMessage: Started => unserialiedMessage.toJson
       case unserialiedMessage: Start => unserialiedMessage.toJson
       case unserialiedMessage: Fail => unserialiedMessage.toJson
     }
@@ -301,8 +300,7 @@ object ImplicitJsonFormats extends DefaultJsonProtocol { me =>
         case JsString("FundingTxSigned") => serialized.convertTo[FundingTxSigned]
         case JsString("BroadcastFundingTx") => serialized.convertTo[BroadcastFundingTx]
         case JsString("FundingTxBroadcasted") => serialized.convertTo[FundingTxBroadcasted]
-        case JsString("FundingTxCreated") => serialized.convertTo[FundingTxCreated]
-        case JsString("FundingTxAwaits") => serialized.convertTo[FundingTxAwaits]
+        case JsString("Started") => serialized.convertTo[Started]
         case JsString("Start") => serialized.convertTo[Start]
         case JsString("Fail") => serialized.convertTo[Fail]
         case _ => throw new RuntimeException
@@ -314,14 +312,8 @@ object ImplicitJsonFormats extends DefaultJsonProtocol { me =>
       Fail](Fail.apply, "userId", "code", "reason"), tag = "Fail")
 
   implicit val startFmt: JsonFormat[Start] =
-    taggedJsonFmt(jsonFormat[UserId, Satoshi, Option[String],
-      Start](Start.apply, "userId", "fundingAmount", "extra"), tag = "Start")
-
-  implicit val fundingTxCreatedFmt: JsonFormat[FundingTxCreated] = taggedJsonFmt(jsonFormat[Start, Long,
-    FundingTxCreated](FundingTxCreated.apply, "start", "expiration"), tag = "FundingTxCreated")
-
-  implicit val fundingTxAwaitsFmt: JsonFormat[FundingTxAwaits] = taggedJsonFmt(jsonFormat[Start, Long,
-    FundingTxAwaits](FundingTxAwaits.apply, "start", "expiration"), tag = "FundingTxAwaits")
+    taggedJsonFmt(jsonFormat[UserId, Satoshi, String, Option[String],
+      Start](Start.apply, "userId", "fundingAmount", "url", "extra"), tag = "Start")
 
   implicit val fundingTxSignedFmt: JsonFormat[FundingTxSigned] = taggedJsonFmt(jsonFormat[UserId, BinaryData, Int,
     FundingTxSigned](FundingTxSigned.apply, "userId", "txHash", "outIndex"), tag = "FundingTxSigned")
@@ -334,4 +326,7 @@ object ImplicitJsonFormats extends DefaultJsonProtocol { me =>
 
   implicit val fundingTxBroadcastedFmt: JsonFormat[FundingTxBroadcasted] = taggedJsonFmt(jsonFormat[UserId, Transaction,
     FundingTxBroadcasted](FundingTxBroadcasted.apply, "userId", "tx"), tag = "FundingTxBroadcasted")
+
+  implicit val startedFmt: JsonFormat[Started] = taggedJsonFmt(jsonFormat[Start, Long,
+    Started](Started.apply, "start", "expiry"), tag = "Started")
 }

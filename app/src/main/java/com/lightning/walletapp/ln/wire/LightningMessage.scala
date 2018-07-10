@@ -1,7 +1,6 @@
 package com.lightning.walletapp.ln.wire
 
 import com.lightning.walletapp.ln.wire.LightningMessageCodecs._
-import com.linkedin.urls.detection.{UrlDetector, UrlDetectorOptions}
 import java.net.{Inet4Address, Inet6Address, InetSocketAddress}
 import fr.acinq.bitcoin.{BinaryData, MilliSatoshi, Satoshi}
 import fr.acinq.bitcoin.Crypto.{Point, PublicKey, Scalar}
@@ -116,12 +115,6 @@ case class NodeAnnouncement(signature: BinaryData,
                             features: BinaryData, timestamp: Long,
                             nodeId: PublicKey, rgbColor: RGB, alias: String,
                             addresses: NodeAddressList) extends RoutingMessage {
-
-  lazy val unsafeHost = {
-    val purifiedUrl: String = alias.replaceAll("[^A-Za-z0-9.-]", " ")
-    val parser = new UrlDetector(purifiedUrl, UrlDetectorOptions.Default)
-    s"_lightning._tcp.${parser.detect.get(0).getHost}."
-  }
 
   lazy val identifier = (alias + nodeId.toString).toLowerCase
   lazy val workingAddress: InetSocketAddress = addresses.collect {
