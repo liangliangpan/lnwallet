@@ -15,6 +15,7 @@ import com.lightning.walletapp.lnutils.JsonHttpUtils._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
 
 import scala.util.{Failure, Try}
+import rx.lang.scala.{Observable => Obs}
 import fr.acinq.bitcoin.{MilliSatoshi, Satoshi}
 import com.lightning.walletapp.lnutils.IconGetter.{bigFont, scrWidth}
 import com.lightning.walletapp.lnutils.ImplicitJsonFormats.refundingDataFmt
@@ -22,6 +23,7 @@ import com.lightning.walletapp.lnutils.olympus.OlympusWrap
 import android.support.v4.app.FragmentStatePagerAdapter
 import com.lightning.walletapp.ln.wire.NodeAnnouncement
 import org.ndeftools.util.activity.NfcReaderActivity
+import com.lightning.walletapp.lnutils.Started
 import com.github.clans.fab.FloatingActionMenu
 import android.support.v7.widget.SearchView
 import com.lightning.walletapp.helper.AES
@@ -136,17 +138,18 @@ class WalletActivity extends NfcReaderActivity with ScanActivity { me =>
   def checkTransData = {
     returnToBase(view = null)
     app.TransData.value match {
-      case offChainPayRequest: PaymentRequest => FragWallet.worker sendPayment offChainPayRequest
       case bu: BitcoinURI => FragWallet.worker.sendBtcPopup(bu.getAddress)(none) setSum Try(bu.getAmount)
-      case btcAddress: Address => FragWallet.worker.sendBtcPopup(btcAddress)(none)
+      case onChainAddress: Address => FragWallet.worker.sendBtcPopup(onChainAddress)(none)
+      case pr: PaymentRequest => FragWallet.worker sendPayment pr
       case FragWallet.REDIRECT => goChanDetails(null)
       case _ =>
     }
 
-    // Clear value in all cases except NodeAnnouncement, we'll need this one
-    val isNodeAnnounce = app.TransData.value.isInstanceOf[NodeAnnouncement]
-    if (isNodeAnnounce) me goTo classOf[LNStartFundActivity]
-    else app.TransData.value = null
+    app.TransData.value match {
+      case _: NodeAnnouncement => me goTo classOf[LNStartFundActivity]
+      case _: Started => me goTo classOf[LNStartActivity]
+      case _ => app.TransData.value = null
+    }
   }
 
   // BUTTONS REACTIONS
@@ -261,31 +264,22 @@ class WalletActivity extends NfcReaderActivity with ScanActivity { me =>
     recoverFunds.setEnabled(app.ChannelManager.currentBlocksLeft < broadcaster.blocksPerDay)
 
     recoverFunds setOnClickListener onButtonTap {
-      // When wallet data is lost users may recover channel funds
-      // by fetching encrypted static channel params from server
+      def recover = OlympusWrap.getBackup(cloudId) foreach { backups =>
+        // Decrypt channel recovery data upon successful call and put them
+        // into an active channel list, then connect to remote peers
+
+        for {
+          encryptedBackup <- backups
+          ref <- AES.decode(encryptedBackup, cloudSecret) map to[RefundingData]
+          if !app.ChannelManager.all.flatMap(_ apply identity).exists(_.channelId == ref.commitments.channelId)
+        } app.ChannelManager.all +:= app.ChannelManager.createChannel(app.ChannelManager.operationalListeners, ref)
+        app.ChannelManager.initConnect
+      }
 
       rm(menu) {
         val bld = baseTextBuilder(me getString channel_recovery_info)
-        mkForm(recover, none, bld, dialog_next, dialog_cancel)
-
-        def recover = {
-          OlympusWrap.getBackup(cloudId).foreach(backups => {
-            // Decrypt channel recovery data upon successful call and put
-            // them into an active channel list, then connect to peers
-
-            for {
-              encrypted <- backups
-              ref <- Try apply AES.decode(encrypted, cloudSecret) map to[RefundingData]
-              if !app.ChannelManager.all.exists(chan => chan(_.channelId) contains ref.commitments.channelId)
-            } app.ChannelManager.all +:= app.ChannelManager.createChannel(app.ChannelManager.operationalListeners, ref)
-            // Now reconnect all fresh created channels
-            app.ChannelManager.initConnect
-            // Inform if not fine
-          }, onFail)
-
-          // Let user know it's happening
-          app toast dialog_recovering
-        }
+        mkForm(runAnd(app toast dialog_recovering)(recover), none,
+          bld, dialog_next, dialog_cancel)
       }
     }
 
