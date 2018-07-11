@@ -25,7 +25,6 @@ object ExternalFunder {
       // Only disconnect if old worker is also a current worker
       wrk.ws.clearListeners
       wrk.ws.disconnect
-      worker = None
     }
 }
 
@@ -33,17 +32,16 @@ case class Worker(params: Started, attemptsLeft: Int = 5) { me =>
   val url = params.start.url + "?body=" + params.start.toJson.toString.hex
   val ws: WebSocket = (new WebSocketFactory).createSocket(url, 7500)
   var listeners: Set[ExternalFunderListener] = Set.empty
-  // Start is uninitialized, Started is server response
   var lastMessage: FundMsg = params.start
 
   def shouldReconnect = lastMessage match {
-    case x: Fail => x.code == FAIL_NOT_VERIFIED_YET
+    case err: Fail => err.code == FAIL_NOT_VERIFIED_YET
     case _: Fail | _: FundingTxBroadcasted => false
     case _ => attemptsLeft > 0
   }
 
   ws addListener new WebSocketAdapter {
-    override def onError(ws: WebSocket, why: WebSocketException) = Tools.runAnd(Tools errlog why)(ws.disconnect)
+    override def onError(ws: WebSocket, why: WebSocketException) = Tools errlog why
     override def onTextMessage(ws: WebSocket, message: String) = for (lst <- listeners) lst onMessage to[FundMsg](message)
     override def onDisconnected(ws: WebSocket, scf: WebSocketFrame, ccf: WebSocketFrame, cbs: Boolean) = onConnectError(ws, null)
 

@@ -98,7 +98,7 @@ class WalletApp extends Application { me =>
     private[this] val prefixes = PaymentRequest.prefixes.values mkString "|"
     private[this] val nodeLink = "([a-fA-F0-9]{66})@([a-zA-Z0-9:\\.\\-_]+):([0-9]+)".r
     private[this] val lnLink = s"(?im).*?($prefixes)([0-9]{1,}[a-z0-9]+){1}".r.unanchored
-    private[this] val exFunder = "(externalfunder):([a-z0-9]+)".r
+    private[this] val exFunding = "(externalfunding):([a-z0-9]+)".r
 
     private def resolveURI(uri: BitcoinURI) = {
       val hasChans = ChannelManager.notClosing.exists(isOperational)
@@ -112,7 +112,7 @@ class WalletApp extends Application { me =>
       case _ if rawText startsWith "BITCOIN" => self resolveURI new BitcoinURI(params, rawText.toLowerCase)
       case nodeLink(key, host, port) => mkNodeAnnouncement(PublicKey(key), host, port.toInt)
       case lnLink(prefix, req) => PaymentRequest read s"$prefix$req".toLowerCase
-      case exFunder(_, paramsHex) => to[Started](paramsHex.hex2asci)
+      case exFunding(_, paramsHex) => to[Started](paramsHex.hex2asci)
       case _ => toAddress(rawText)
     }
   }
@@ -238,13 +238,12 @@ class WalletApp extends Application { me =>
 
         // We should explain to user what exactly is going on here
         case Some(report) if report.finalCanSend < rd.firstMsat =>
-
-          val alias = report.chan.data.announce.alias
           val sendingNow = coloredOut apply MilliSatoshi(rd.firstMsat)
           val finalCanSend = coloredIn apply MilliSatoshi(report.finalCanSend)
           val capacity = coloredIn apply MilliSatoshi(Commitments.latestRemoteCommit(report.cs).spec.toRemoteMsat)
           val hardReserve = coloredOut apply Satoshi(report.cs.remoteParams.channelReserveSatoshis + report.cs.reducedRemoteState.feesSat)
-          Left(getString(err_ln_second_reserve).format(alias, hardReserve, coloredOut(report.softReserve), capacity, finalCanSend, sendingNow).html)
+          Left(getString(err_ln_second_reserve).format(report.chan.data.announce.alias, hardReserve, coloredOut(report.softReserve),
+            capacity, finalCanSend, sendingNow).html)
 
         case None => Left(me getString err_ln_no_chan)
         case Some(reportWhichIsFine) => Right(rd)
