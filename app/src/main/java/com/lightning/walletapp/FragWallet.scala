@@ -522,9 +522,15 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
           }
         }
 
-        val txt = app.getString(ln_send_title).format(me getDescription pr.description)
-        mkCheckForm(sendAttempt, none, baseBuilder(txt.html, content), dialog_pay, dialog_cancel)
-        for (initialPaymentAmountMsat <- pr.amount) rateManager setSum Try(initialPaymentAmountMsat)
+        for (amountAskedByReceiver <- pr.amount) rateManager setSum Try(amountAskedByReceiver)
+        val bld = baseBuilder(app.getString(ln_send_title).format(me getDescription pr.description).html, content)
+        def onChain(runnable: Runnable) = mkCheckFormNeutral(sendAttempt, none, alert => rm(alert)(runnable.run), bld,
+          dialog_pay, dialog_cancel, dialog_pay_onchain)
+
+        onChainRunnable(pr) -> pr.amount match {
+          case Some(runnable) \ Some(asked) if maxCanSend < asked => onChain(runnable)
+          case _ => mkCheckForm(sendAttempt, none, bld, dialog_pay, dialog_cancel)
+        }
       }
     }
 
