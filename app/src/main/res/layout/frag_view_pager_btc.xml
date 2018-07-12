@@ -52,9 +52,7 @@
                 android:layout_width="wrap_content"
                 android:onClick="viewMnemonic"/>
 
-            <View
-                android:id="@+id/actionDivider"
-                style="@style/GrayDivider"/>
+            <View style="@style/GrayDivider"/>
 
             <TextView
                 style="@style/MarginInfo"

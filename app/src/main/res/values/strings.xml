@@ -182,8 +182,8 @@
     <string name="err_fund_funding_none">Can not proceed with external funding because a funding transaction signing failed</string>
     <string name="err_fund_internal_error">Can not proceed with external funding because a remote internal error occurred</string>
 
-    <string name="fund_connecting"><![CDATA[Connecting to <i>%1$s</i><br>Expires at <strong>%2$s</strong><br>Funding amount %3$s<br><br><small>Channel is going to be funded externally</small>]]></string>
-    <string name="fund_connected"><![CDATA[Connected to <i>%1$s</i><br>Expires at <strong>%2$s</strong><br>Funding amount %3$s<br><br><small>Channel is going to be funded externally</small>]]></string>
+    <string name="fund_connecting"><![CDATA[<small>Connecting to <i>%1$s</i></small><br>Funding amount %2$s<br>Expires at <strong>%3$s</strong>]]></string>
+    <string name="fund_connected"><![CDATA[<small>Connected to <i>%1$s</i></small><br>Funding amount %2$s<br>Expires at <strong>%3$s</strong>]]></string>
 
     <!-- SPECIFIC TO LIGHTNING NETWORK -->
 

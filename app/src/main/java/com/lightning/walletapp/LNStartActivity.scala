@@ -7,13 +7,11 @@ import com.lightning.walletapp.R.string._
 import com.lightning.walletapp.StartNodeView._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
 import com.lightning.walletapp.lnutils.olympus.OlympusWrap._
-
 import android.support.v4.app.{Fragment, FragmentStatePagerAdapter}
-import android.widget.{BaseAdapter, ListView, TextView}
+import android.widget.{BaseAdapter, LinearLayout, ListView, TextView}
 import com.lightning.walletapp.ln.wire.NodeAnnouncement
 import com.lightning.walletapp.helper.ThrottledWork
 import com.lightning.walletapp.ln.Tools.runAnd
-import fr.acinq.bitcoin.Crypto.PublicKey
 import org.bitcoinj.uri.BitcoinURI
 import org.bitcoinj.core.Address
 import android.os.Bundle
@@ -69,11 +67,10 @@ class FragLNStart extends Fragment with SearchBar { me =>
 
   override def onViewCreated(view: View, state: Bundle) = {
     val lnStartNodesList = view.findViewById(R.id.lnStartNodesList).asInstanceOf[ListView]
+    val externalFundInfo = view.findViewById(R.id.externalFundInfo).asInstanceOf[TextView]
+    val externalFundWrap = view.findViewById(R.id.externalFundWrap).asInstanceOf[LinearLayout]
     val toolbar = view.findViewById(R.id.toolbar).asInstanceOf[android.support.v7.widget.Toolbar]
     var nodes = Vector.empty[StartNodeView]
-
-    val enduranceKey = PublicKey("03933884aaf1d6b108397e5efe5c86bcf2d8ca8d2f700eda99db9214fc2712b134")
-    val endurance = HardcodedNodeView(app.mkNodeAnnouncement(enduranceKey, "34.250.234.192", 9735), "<i>ACINQ node</i>")
 
     val adapter = new BaseAdapter {
       def getView(pos: Int, savedView: View, par: ViewGroup) = {
@@ -99,8 +96,7 @@ class FragLNStart extends Fragment with SearchBar { me =>
       me.react = addWork
 
       def process(ask: String, res: AnnounceChansNumVec) = {
-        val remoteNodeViewWraps = for (announce <- res) yield RemoteNodeView(announce)
-        nodes = if (ask.isEmpty) endurance +: remoteNodeViewWraps else remoteNodeViewWraps
+        nodes = for (announce <- res) yield RemoteNodeView(announce)
         host.UITask(adapter.notifyDataSetChanged).run
       }
     }
