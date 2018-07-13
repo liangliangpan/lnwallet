@@ -7,14 +7,16 @@ import com.lightning.walletapp.ln.Tools.UserId
 
 object FundMsg {
   val FAIL_VERIFY_ERROR = 101
-  val FAIL_INTERNAL_ERROR = 301
   val FAIL_NOT_VERIFIED_YET = 102
+
   val FAIL_COULD_NOT_RESERVE = 201
   val FAIL_RESERVE_EXPIRED = 202
   val FAIL_FUNDING_PENDING = 205
   val FAIL_FUNDING_EXISTS = 206
   val FAIL_FUNDING_NONE = 207
   val FAIL_SIGNED_NONE = 208
+
+  val FAIL_INTERNAL_ERROR = 301
 
   val map = Map(
     FAIL_VERIFY_ERROR -> err_fund_verify_error,
