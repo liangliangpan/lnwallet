@@ -118,9 +118,9 @@ class ChanDetailsFrag extends Fragment with HumanTimeDisplay { me =>
     val lnOpsDescription = Utils clickableTextField view.findViewById(R.id.lnOpsDescription)
     def warnAndForceClose = warnAndMaybeClose(host getString ln_chan_force_details)
 
-    def warnAndMaybeClose(warning: String) =
-      mkForm(chan process app.ChannelManager.CMDLocalShutdown,
-        none, baseTextBuilder(warning.html), dialog_ok, dialog_cancel)
+    def warnAndMaybeClose(channelClosureWarning: String) =
+      mkCheckForm(alert => rm(alert)(chan process app.ChannelManager.CMDLocalShutdown),
+        none, baseTextBuilder(channelClosureWarning.html), dialog_ok, dialog_cancel)
 
     chan { cs =>
       val alias = chan.data.announce.alias
@@ -164,8 +164,8 @@ class ChanDetailsFrag extends Fragment with HumanTimeDisplay { me =>
             case Success(address) =>
               val where = humanSix(address.toString)
               val text = host.getString(ln_chan_close_confirm_address).format(where).html
-              val customFinalPubKeyScript: Option[BinaryData] = Some(ScriptBuilder.createOutputScript(address).getProgram)
-              mkForm(chan process CMDShutdown(customFinalPubKeyScript), none, baseTextBuilder(text), dialog_ok, dialog_cancel)
+              val customShutdown = CMDShutdown apply Some(ScriptBuilder.createOutputScript(address).getProgram)
+              mkCheckForm(alert => rm(alert)(chan process customShutdown), none, baseTextBuilder(text), dialog_ok, dialog_cancel)
 
             case _ =>
               // No address is present

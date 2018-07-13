@@ -59,8 +59,8 @@ class FragWallet extends Fragment {
 }
 
 class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar with HumanTimeDisplay { me =>
-  import host.{UITask, onButtonTap, mkForm, showForm, negBuilder, baseBuilder, negTextBuilder, onFastTap, str2View}
-  import host.{onFail, TxProcessor, getSupportLoaderManager, rm, mkCheckForm, mkCheckFormNeutral, <, onTap, showDenomChooser}
+  import host.{UITask, onButtonTap, showForm, negBuilder, baseBuilder, negTextBuilder, onFastTap, str2View, onTap}
+  import host.{onFail, TxProcessor, getSupportLoaderManager, mkCheckForm, rm, mkCheckFormNeutral, <, showDenomChooser}
   def getDescription(rawText: String) = if (rawText.isEmpty) s"<i>$noDesc</i>" else rawText take 140
 
   val mnemonicWarn = frag.findViewById(R.id.mnemonicWarn).asInstanceOf[LinearLayout]
@@ -90,7 +90,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
   val blocksTitleListener = new BlocksListener {
     def onBlocksDownloaded(p: Peer, b: Block, fb: FilteredBlock, left: Int) =
-    // Runtime optimization: avoid calling update more than once per 144 blocks
+      // Runtime optimization: avoid calling update more than once per 144 blocks
       if (left % broadcaster.blocksPerDay == 0) updTitle.run
   }
 
@@ -222,8 +222,6 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
       val humanStatus = s"<strong>${paymentStates apply info.actualStatus}</strong>"
       val detailsWrapper = host.getLayoutInflater.inflate(R.layout.frag_tx_ln_details, null)
       val paymentDetails = detailsWrapper.findViewById(R.id.paymentDetails).asInstanceOf[TextView]
-      val paymentRouting = detailsWrapper.findViewById(R.id.paymentRouting).asInstanceOf[Button]
-      val peerResponses = detailsWrapper.findViewById(R.id.peerResponses).asInstanceOf[Button]
       val paymentProof = detailsWrapper.findViewById(R.id.paymentProof).asInstanceOf[Button]
       val paymentHash = detailsWrapper.findViewById(R.id.paymentHash).asInstanceOf[Button]
       paymentHash setOnClickListener onButtonTap(host share rd.paymentHashString)
@@ -238,57 +236,40 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
         }
       }
 
-      if (0 == info.incoming && info.actualStatus == FAILURE) {
-        for (responses <- PaymentInfo.errors get rd.pr.paymentHash) {
-          val history = responses.reverse.map(_.toString) mkString "\n===\n"
-          peerResponses setOnClickListener onButtonTap(host share history)
-          peerResponses setVisibility View.VISIBLE
-        }
-      }
-
-      for (rd1 <- PaymentInfoWrap.inFlightPayments get rd.pr.paymentHash) {
-        val receiverExpiry = rd.pr.minFinalCltvExpiry.getOrElse(0L) + 9L + 1L
-        val receiver = s"Payee: ${rd.pr.nodeId.toString}, Expiry delta: $receiverExpiry blocks"
-        val routingPath = for (usedPaymentHop <- rd1.usedRoute) yield usedPaymentHop.humanDetails
-        val fullPath = "Your wallet" +: routingPath :+ receiver mkString "\n-->\n"
-        paymentRouting setOnClickListener onButtonTap(host share fullPath)
-        paymentRouting setVisibility View.VISIBLE
-      }
-
       def outgoingTitle = {
         val fee = MilliSatoshi(info.lastMsat - info.firstMsat)
         val paidFeePercent = fee.amount / (info.firstMsat / 100D)
         val title = lnTitleOut.format(humanStatus, coloredOut(info.firstSum), inFiat, coloredOut(fee), paidFeePercent)
-        val expiryBlocksPart = app.plurOrZero(expiryLeft, info.lastExpiry - broadcaster.currentHeight)
-        if (info.actualStatus == WAITING) s"$expiryBlocksPart<br>$title" else title
+        val expiryBlocksLeftPart = app.plurOrZero(expiryLeft, info.lastExpiry - broadcaster.currentHeight)
+        if (info.actualStatus == WAITING) s"$expiryBlocksLeftPart<br>$title" else title
       }
 
       info.incoming -> onChainRunnable(rd.pr) match {
         case 0 \ Some(runnable) if info.lastMsat == 0 && info.lastExpiry == 0 && info.actualStatus == FAILURE =>
           val bld = baseBuilder(lnTitleOutNoFee.format(humanStatus, coloredOut(info.firstSum), inFiat).html, detailsWrapper)
-          mkCheckFormNeutral(none, none, alert => rm(alert)(runnable.run), bld, dialog_cancel, -1, dialog_pay_onchain)
+          mkCheckFormNeutral(alert => rm(alert)(none), none, alert => rm(alert)(runnable.run), bld, dialog_ok, -1, dialog_pay_onchain)
 
         case 0 \ _ if info.lastMsat == 0 && info.lastExpiry == 0 =>
           // Payment has not been tried yet because an on-chain wallet is still offline
           val title = lnTitleOutNoFee.format(humanStatus, coloredOut(info.firstSum), inFiat)
-          showForm(negBuilder(dialog_cancel, title.html, detailsWrapper).create)
+          showForm(negBuilder(dialog_ok, title.html, detailsWrapper).create)
 
         case 0 \ Some(runnable) =>
           val bld = baseBuilder(outgoingTitle.html, detailsWrapper)
-          if (info.actualStatus != FAILURE) showForm(negBuilder(dialog_cancel, outgoingTitle.html, detailsWrapper).create)
-          else mkCheckFormNeutral(alert => rm(alert)(none), doSend(rd), alert => rm(alert)(runnable.run), bld, dialog_cancel,
+          if (info.actualStatus != FAILURE) showForm(negBuilder(dialog_ok, outgoingTitle.html, detailsWrapper).create)
+          else mkCheckFormNeutral(alert => rm(alert)(none), doSend(rd), alert => rm(alert)(runnable.run), bld, dialog_ok,
             noResource = if (info.pr.isFresh) dialog_retry else -1, dialog_pay_onchain)
 
         case 0 \ _ =>
-          // Allow user to retry this payment while using excluded nodes and channels but only if pr has not expired yet
-          if (info.actualStatus != FAILURE) showForm(negBuilder(dialog_cancel, outgoingTitle.html, detailsWrapper).create)
-          else mkForm(none, doSend(rd), baseBuilder(outgoingTitle.html, detailsWrapper), dialog_cancel,
+          // Allow user to retry this payment while using excluded nodes and channels
+          if (info.actualStatus != FAILURE) showForm(negBuilder(dialog_ok, outgoingTitle.html, detailsWrapper).create)
+          else mkCheckForm(alert => rm(alert)(none), doSend(rd), baseBuilder(outgoingTitle.html, detailsWrapper), dialog_ok,
             noResource = if (info.pr.isFresh) dialog_retry else -1)
 
         case 1 \ _ =>
           // This is an incoming payment
           val title = lnTitleIn.format(humanStatus, coloredIn(info.firstSum), inFiat)
-          showForm(negBuilder(dialog_cancel, title.html, detailsWrapper).create)
+          showForm(negBuilder(dialog_ok, title.html, detailsWrapper).create)
       }
     }
   }
@@ -338,7 +319,8 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
       }
 
       val header = wrap.fee match {
-        // See TxWrap for details on this
+        // View is mainly based on fee
+        // see TxWrap for details on this
 
         case _ if txDead =>
           // Details do not matter
@@ -365,9 +347,8 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
       }
 
       // Check if CPFP can be applied
-      val notEnough = wrap.valueDelta isLessThan RatesSaver.rates.feeSix
-      if (txDepth > 0 || notEnough) showForm(negBuilder(dialog_ok, header.html, lst).create)
-      else mkForm(none, boostIncoming(wrap), baseBuilder(header.html, lst), dialog_ok, dialog_boost)
+      if (wrap.valueDelta.isLessThan(RatesSaver.rates.feeSix) || txDepth > 0) showForm(negBuilder(dialog_ok, header.html, lst).create)
+      else mkCheckForm(alert => rm(alert)(none), boostIncoming(wrap), baseBuilder(header.html, lst), dialog_ok, dialog_boost)
     }
   }
 
@@ -522,14 +503,18 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
           }
         }
 
-        for (amountAskedByReceiver <- pr.amount) rateManager setSum Try(amountAskedByReceiver)
-        val bld = baseBuilder(app.getString(ln_send_title).format(me getDescription pr.description).html, content)
-        def onChain(runnable: Runnable) = mkCheckFormNeutral(sendAttempt, none, alert => rm(alert)(runnable.run), bld,
-          dialog_pay, dialog_cancel, dialog_pay_onchain)
+        for (senderAskedAmount <- pr.amount) rateManager setSum Try(senderAskedAmount)
+        val text = app.getString(ln_send_title).format(me getDescription pr.description)
+        val bld = baseBuilder(text.html, content)
 
         onChainRunnable(pr) -> pr.amount match {
-          case Some(runnable) \ Some(asked) if maxCanSend < asked => onChain(runnable)
-          case _ => mkCheckForm(sendAttempt, none, bld, dialog_pay, dialog_cancel)
+          case Some(runnable) \ Some(askedAmount) if maxCanSend < askedAmount =>
+            mkCheckFormNeutral(sendAttempt, none, alert => rm(alert)(runnable.run),
+              bld, dialog_pay, dialog_cancel, dialog_pay_onchain)
+
+          case otherwise =>
+            mkCheckForm(sendAttempt, none,
+              bld, dialog_pay, dialog_cancel)
         }
       }
     }
@@ -545,9 +530,14 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
       }
 
       onChainRunnable(pr) match {
-        case None => mkForm(proceed, none, bld, dialog_ok, dialog_cancel)
-        case Some(runnable) => mkCheckFormNeutral(alert => rm(alert)(proceed), none,
-          alert => rm(alert)(runnable.run), bld, dialog_ok, dialog_cancel, dialog_pay_onchain)
+        case Some(runnable) =>
+          mkCheckFormNeutral(alert => rm(alert)(proceed), none,
+            alert => rm(alert)(runnable.run), bld, dialog_ok,
+            dialog_cancel, dialog_pay_onchain)
+
+        case None =>
+          mkCheckForm(alert => rm(alert)(proceed),
+            none, bld, dialog_ok, dialog_cancel)
       }
     }
 
@@ -594,8 +584,10 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
       val pay = AddrData(ms, addr)
       def onTxFail(sendingError: Throwable) = {
+        def retryBtcPopup = sendBtcPopup(addr)(and)
         val bld = baseBuilder(messageWhenMakingTx(sendingError), null)
-        mkForm(sendBtcPopup(addr)(and), none, bld, dialog_ok, dialog_cancel)
+        mkCheckForm(alert => rm(alert)(retryBtcPopup), none, bld,
+          dialog_retry, dialog_cancel)
       }
     }
 
@@ -617,7 +609,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
     val boost = coloredIn(wrap.valueDelta minus newFee)
     // Unlike normal transaction this one uses a whole half of current feeSix
     val userWarn = baseBuilder(app.getString(boost_details).format(current, boost).html, null)
-    mkForm(none, <(replace, onError)(none), userWarn, dialog_cancel, dialog_boost)
+    mkCheckForm(alert => rm(alert)(none), <(replace, onError)(none), userWarn, dialog_cancel, dialog_boost)
 
     def replace: Unit = {
       // Check once again whether it still needs boosting

@@ -142,7 +142,8 @@ class LNStartFundActivity extends TimerActivity { me =>
 
         def onTxFail(fundingError: Throwable) = {
           val bld = baseBuilder(messageWhenMakingTx(fundingError), null)
-          mkForm(askForFunding(their).run, none, bld, dialog_ok, dialog_cancel)
+          mkCheckForm(alert => rm(alert)(askForFunding(their).run), none,
+            bld, dialog_ok, dialog_cancel)
         }
       }
 

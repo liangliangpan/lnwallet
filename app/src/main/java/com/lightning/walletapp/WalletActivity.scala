@@ -215,18 +215,18 @@ class WalletActivity extends NfcReaderActivity with ScanActivity { me =>
     else me goTo classOf[LNOpsActivity]
   }
 
-  private[this] val tokensPrice = MilliSatoshi(1000000L)
+  val tokensPrice = MilliSatoshi(1000000L)
+  def goLNStart = me goTo classOf[LNStartActivity]
   def goAddChannel(top: View) = if (app.ChannelManager.all.isEmpty) {
     val humanPrice = s"${coloredIn apply tokensPrice} <font color=#999999>${msatInFiatHuman apply tokensPrice}</font>"
     val warn = baseTextBuilder(getString(tokens_warn).format(humanPrice).html).setCustomTitle(me getString action_ln_open)
-    mkForm(me goTo classOf[LNStartActivity], none, warn, dialog_ok, dialog_cancel)
-  } else me goTo classOf[LNStartActivity]
+    mkCheckForm(alert => rm(alert)(goLNStart), none, warn, dialog_ok, dialog_cancel)
+  } else goLNStart
 
   def showDenomChooser = {
     val lnTotalMsat = app.ChannelManager.notClosingOrRefunding.map(estimateCanSend).sum
     val walletTotalSum = Satoshi(app.kit.conf0Balance.value + lnTotalMsat / 1000L)
     val rate = msatInFiatHuman apply MilliSatoshi(100000000000L)
-    val inFiatTotal = msatInFiatHuman apply walletTotalSum
 
     val title = getLayoutInflater.inflate(R.layout.frag_wallet_state, null)
     val form = getLayoutInflater.inflate(R.layout.frag_input_choose_fee, null)
@@ -246,8 +246,8 @@ class WalletActivity extends NfcReaderActivity with ScanActivity { me =>
     denomChoiceList.getCheckedItemPosition
     denomChoiceList setAdapter new ArrayAdapter(me, singleChoice, allDenominations)
     denomChoiceList.setItemChecked(app.prefs.getInt(AbstractKit.DENOM_TYPE, 0), true)
-    stateContent setText s"${coloredIn apply walletTotalSum}<br><small>$inFiatTotal</small>".html
-    mkForm(updateDenomination, none, negBuilder(dialog_ok, title, form), dialog_ok, dialog_cancel)
+    stateContent setText s"${coloredIn apply walletTotalSum}<br><small>${msatInFiatHuman apply walletTotalSum}</small>".html
+    mkCheckForm(alert => rm(alert)(updateDenomination), none, negBuilder(dialog_ok, title, form), dialog_ok, dialog_cancel)
   }
 
   // SETTINGS FORM
@@ -277,9 +277,9 @@ class WalletActivity extends NfcReaderActivity with ScanActivity { me =>
       }
 
       rm(menu) {
+        def go = runAnd(app toast dialog_recovering)(recover)
         val bld = baseTextBuilder(me getString channel_recovery_info)
-        mkForm(runAnd(app toast dialog_recovering)(recover), none,
-          bld, dialog_next, dialog_cancel)
+        mkCheckForm(alert => rm(alert)(go), none, bld, dialog_next, dialog_cancel)
       }
     }
 
@@ -294,8 +294,9 @@ class WalletActivity extends NfcReaderActivity with ScanActivity { me =>
       // warn user as this is a time consuming operation
 
       rm(menu) {
-        val bld = baseTextBuilder(me getString sets_rescan_ok)
-        mkForm(go, none, bld, dialog_ok, dialog_cancel)
+        mkCheckForm(alert => rm(alert)(go), none,
+          baseTextBuilder(me getString sets_rescan_ok),
+          dialog_ok, dialog_cancel)
       }
 
       def go = try {

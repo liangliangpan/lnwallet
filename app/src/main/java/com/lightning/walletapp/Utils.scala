@@ -107,10 +107,6 @@ trait TimerActivity extends AppCompatActivity { me =>
   def onFail(error: CharSequence): Unit = UITask(me showForm negBuilder(dialog_ok, null, error).create).run
   def onFail(error: Throwable): Unit = onFail(error.getMessage)
 
-  def mkForm(ok: => Unit, no: => Unit, bld: Builder, okResource: Int, noResource: Int) =
-    // Used for forms which do not need to check user input and can be dismissed right away
-    mkCheckForm(alert => rm(alert)(ok), no, bld, okResource, noResource)
-
   def mkCheckForm(ok: AlertDialog => Unit, no: => Unit, bld: Builder, okResource: Int, noResource: Int) = {
     // Create alert dialog with NEGATIVE button which removes a dialog and calls a respected provided function
     // both POSITIVE and NEGATIVE buttons may be omitted by providing -1 as their resource ids
@@ -118,17 +114,23 @@ trait TimerActivity extends AppCompatActivity { me =>
     if (-1 != okResource) bld.setPositiveButton(okResource, null)
 
     val alert = showForm(bld.create)
+    val posAct = me onButtonTap ok(alert)
+    val negAct = me onButtonTap rm(alert)(no)
     try clickableTextField(alert findViewById android.R.id.message) catch none
-    if (-1 != noResource) alert getButton BUTTON_NEGATIVE setOnClickListener onButtonTap(rm(alert)(no))
-    if (-1 != noResource) alert getButton BUTTON_POSITIVE setOnClickListener onButtonTap(ok(alert))
+    if (-1 != noResource) alert getButton BUTTON_NEGATIVE setOnClickListener negAct
+    if (-1 != noResource) alert getButton BUTTON_POSITIVE setOnClickListener posAct
     alert
   }
 
   def mkCheckFormNeutral(ok: AlertDialog => Unit, no: => Unit, neutral: AlertDialog => Unit,
                          bld: Builder, okResource: Int, noResource: Int, neutralResource: Int) = {
 
-    val alert = mkCheckForm(ok, no, bld.setNeutralButton(neutralResource, null), okResource, noResource)
-    alert getButton BUTTON_NEUTRAL setOnClickListener onButtonTap(neutral apply alert)
+    val bld1 = bld.setNeutralButton(neutralResource, null)
+    val alert = mkCheckForm(ok, no, bld1, okResource, noResource)
+    val neutralAct = me onButtonTap neutral(alert)
+
+    // Extend base dialog with a special neutral button
+    alert getButton BUTTON_NEUTRAL setOnClickListener neutralAct
     alert
   }
 
@@ -218,14 +220,14 @@ trait TimerActivity extends AppCompatActivity { me =>
       val lst = form.findViewById(R.id.choiceList).asInstanceOf[ListView]
       val feesOptions = Array(txtFeeRisky.html, txtFeeLive.html)
 
-      def proceed = lst.getCheckedItemPosition match {
+      def proceed = <(lst.getCheckedItemPosition match {
         // Allow user to choose an economical fee when sending a manual transaction
         case 0 => self futureProcess plainRequest(RatesSaver.rates.feeSix div 2)
         case 1 => self futureProcess plainRequest(RatesSaver.rates.feeSix)
-      }
+      }, onTxFail)(none)
 
       val bld = baseBuilder(getString(step_fees).format(sumOut format pay.destination).html, form)
-      mkForm(ok = <(proceed, onTxFail)(none), none, bld, dialog_pay, dialog_cancel)
+      mkCheckForm(alert => rm(alert)(proceed), none, bld, dialog_pay, dialog_cancel)
       lst setAdapter new ArrayAdapter(me, singleChoice, feesOptions)
       lst.setItemChecked(0, true)
     }
