@@ -15,13 +15,12 @@ import com.lightning.walletapp.lnutils.JsonHttpUtils._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
 
 import scala.util.{Failure, Try}
-import rx.lang.scala.{Observable => Obs}
 import fr.acinq.bitcoin.{MilliSatoshi, Satoshi}
+import com.lightning.walletapp.ln.wire.{NodeAnnouncement, Started}
 import com.lightning.walletapp.lnutils.IconGetter.{bigFont, scrWidth}
 import com.lightning.walletapp.lnutils.ImplicitJsonFormats.refundingDataFmt
 import com.lightning.walletapp.lnutils.olympus.OlympusWrap
 import android.support.v4.app.FragmentStatePagerAdapter
-import com.lightning.walletapp.ln.wire.{NodeAnnouncement, Started}
 import org.ndeftools.util.activity.NfcReaderActivity
 import com.github.clans.fab.FloatingActionMenu
 import android.support.v7.widget.SearchView
@@ -30,7 +29,6 @@ import org.bitcoinj.store.SPVBlockStore
 import android.text.format.DateFormat
 import org.bitcoinj.uri.BitcoinURI
 import java.text.SimpleDateFormat
-
 import org.bitcoinj.core.Address
 import org.ndeftools.Message
 import android.os.Bundle

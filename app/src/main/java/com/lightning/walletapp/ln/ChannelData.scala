@@ -54,8 +54,9 @@ case class WaitFundingSignedCore(localParams: LocalParams, channelId: BinaryData
 case class WaitFundingSignedData(announce: NodeAnnouncement, core: WaitFundingSignedCore,
                                  fundingTx: Transaction) extends ChannelData
 
-case class WaitFundingSignedRemoteData(announce: NodeAnnouncement, core: WaitFundingSignedCore,
-                                       firstCommitTx: Option[CommitTx], txid: BinaryData) extends ChannelData
+case class WaitFundingSignedRemoteData(announce: NodeAnnouncement,
+                                       core: WaitFundingSignedCore, firstCommitTx: Option[CommitTx],
+                                       txid: BinaryData, premature: Boolean = false) extends ChannelData
 
 // All the data below will be stored
 case class WaitFundingDoneData(announce: NodeAnnouncement, our: Option[FundingLocked],

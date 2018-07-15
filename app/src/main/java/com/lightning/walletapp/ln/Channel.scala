@@ -73,7 +73,7 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
 
 
       case (WaitFundingData(announce, cmd, accept), CMDFunding(fundTx), WAIT_FOR_FUNDING) =>
-        // They have accepted our proposal, let them sign a first commit so we can later broadcast a funding
+        // They have accepted our proposal, let them sign a first commit so we can broadcast a funding later
         if (fundTx.txOut(cmd.outIndex).amount.amount != cmd.realFundingAmountSat) throw new LightningException
         val wfsc \ fundingCreatedMessage = signFunding(cmd, accept, txHash = fundTx.hash, outIndex = cmd.outIndex)
         BECOME(WaitFundingSignedData(announce, wfsc, fundTx), WAIT_FUNDING_SIGNED) SEND fundingCreatedMessage
@@ -102,18 +102,16 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
         }
 
 
-      // We have asked an external funder to broadcast a signed fundTx and got a positive response
-      case (wait: WaitFundingSignedRemoteData, FundingTxBroadcasted(_, remoteFundTx), WAIT_FUNDING_SIGNED)
-        // GUARD: this remote funding transaction blongs to this exact channel
-        if wait.txid == remoteFundTx.txid && wait.firstCommitTx.isDefined =>
-        startWait(wait, wait.core, wait.firstCommitTx.get, remoteFundTx)
-
-
       // We have asked an external funder to broadcast a signed fundTx and got an onchain ack
-      case (wait: WaitFundingSignedRemoteData, CMDFunding(remoteFundTx), WAIT_FUNDING_SIGNED)
+      case (wait: WaitFundingSignedRemoteData, CMDSpent(remoteFundTx), WAIT_FUNDING_SIGNED)
         // GUARD: this remote funding transaction blongs to this exact channel
-        if wait.txid == remoteFundTx.txid && wait.firstCommitTx.isDefined =>
-        startWait(wait, wait.core, wait.firstCommitTx.get, remoteFundTx)
+        if wait.txid == remoteFundTx.txid =>
+
+        wait.firstCommitTx match {
+          // Ascribe blame on external funder for premature tx publishing
+          case Some(commit) => startWait(wait, wait.core, commit, remoteFundTx)
+          case None => BECOME(wait.copy(premature = true), CLOSING)
+        }
 
 
       // FUNDING TX IS BROADCASTED AT THIS POINT
