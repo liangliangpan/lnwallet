@@ -21,9 +21,8 @@ import com.lightning.walletapp.lnutils.IconGetter.{bigFont, scrWidth}
 import com.lightning.walletapp.lnutils.ImplicitJsonFormats.refundingDataFmt
 import com.lightning.walletapp.lnutils.olympus.OlympusWrap
 import android.support.v4.app.FragmentStatePagerAdapter
-import com.lightning.walletapp.ln.wire.NodeAnnouncement
+import com.lightning.walletapp.ln.wire.{NodeAnnouncement, Started}
 import org.ndeftools.util.activity.NfcReaderActivity
-import com.lightning.walletapp.lnutils.Started
 import com.github.clans.fab.FloatingActionMenu
 import android.support.v7.widget.SearchView
 import com.lightning.walletapp.helper.AES
@@ -31,6 +30,7 @@ import org.bitcoinj.store.SPVBlockStore
 import android.text.format.DateFormat
 import org.bitcoinj.uri.BitcoinURI
 import java.text.SimpleDateFormat
+
 import org.bitcoinj.core.Address
 import org.ndeftools.Message
 import android.os.Bundle

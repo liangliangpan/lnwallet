@@ -3,7 +3,9 @@ package com.lightning.walletapp.lnutils
 import spray.json._
 import scala.concurrent.duration._
 import com.neovisionaries.ws.client._
-import com.lightning.walletapp.lnutils.FundMsg._
+import com.lightning.walletapp.ln.wire._
+import com.lightning.walletapp.R.string._
+import com.lightning.walletapp.ln.wire.FundMsg._
 import com.lightning.walletapp.lnutils.JsonHttpUtils._
 import com.lightning.walletapp.lnutils.ImplicitJsonFormats._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
@@ -26,6 +28,18 @@ object ExternalFunder {
       wrk.ws.clearListeners
       wrk.ws.disconnect
     }
+
+  val map = Map(
+    FAIL_VERIFY_ERROR -> err_fund_verify_error,
+    FAIL_INTERNAL_ERROR -> err_fund_internal_error,
+    FAIL_NOT_VERIFIED_YET -> err_fund_not_verified_yet,
+    FAIL_COULD_NOT_RESERVE -> err_fund_could_not_reserve,
+    FAIL_RESERVE_EXPIRED -> err_fund_reserve_expired,
+    FAIL_FUNDING_PENDING -> err_fund_funding_pending,
+    FAIL_FUNDING_EXISTS -> err_fund_funding_exists,
+    FAIL_FUNDING_NONE -> err_fund_funding_none,
+    FAIL_SIGNED_NONE -> err_fund_signed_none
+  )
 }
 
 case class Worker(params: Started, attemptsLeft: Int = 5) { me =>

@@ -4,6 +4,7 @@ import com.softwaremill.quicklens._
 import com.lightning.walletapp.ln.wire._
 import com.lightning.walletapp.ln.Channel._
 import com.lightning.walletapp.ln.PaymentInfo._
+import com.lightning.walletapp.ln.Scripts.CommitTx
 import java.util.concurrent.Executors
 import fr.acinq.eclair.UInt64
 
@@ -72,34 +73,47 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
 
 
       case (WaitFundingData(announce, cmd, accept), CMDFunding(fundTx), WAIT_FOR_FUNDING) =>
-        // They have accepted our proposal, let them sign a first commit so we can broadcast a funding
+        // They have accepted our proposal, let them sign a first commit so we can later broadcast a funding
         if (fundTx.txOut(cmd.outIndex).amount.amount != cmd.realFundingAmountSat) throw new LightningException
-        val (localSpec, localCommitTx, remoteSpec, remoteCommitTx) = Funding.makeFirstFunderCommitTxs(cmd, accept,
-          fundTx.hash, fundingTxOutputIndex = cmd.outIndex, remoteFirstPoint = accept.firstPerCommitmentPoint)
-
-        val localSigOfRemoteTx = Scripts.sign(remoteCommitTx, cmd.localParams.fundingPrivKey)
-        val fundingCreated = FundingCreated(cmd.tempChanId, fundTx.hash, cmd.outIndex, localSigOfRemoteTx)
-        val firstRemoteCommit = RemoteCommit(0L, remoteSpec, remoteCommitTx.tx.txid, accept.firstPerCommitmentPoint)
-        BECOME(WaitFundingSignedData(announce, cmd.localParams, Tools.toLongId(fundTx.hash, cmd.outIndex), accept, fundTx,
-          localSpec, localCommitTx, firstRemoteCommit), WAIT_FUNDING_SIGNED) SEND fundingCreated
+        val wfsc \ fundingCreatedMessage = signFunding(cmd, accept, txHash = fundTx.hash, outIndex = cmd.outIndex)
+        BECOME(WaitFundingSignedData(announce, wfsc, fundTx), WAIT_FUNDING_SIGNED) SEND fundingCreatedMessage
 
 
-      // They have signed our first commit, we can broadcast a funding tx
+      // They have signed our first commit, we can broadcast a local funding tx
       case (wait: WaitFundingSignedData, remote: FundingSigned, WAIT_FUNDING_SIGNED) =>
-        val signedLocalCommitTx = Scripts.addSigs(wait.localCommitTx, wait.localParams.fundingPrivKey.publicKey,
-          wait.remoteParams.fundingPubkey, Scripts.sign(wait.localCommitTx, wait.localParams.fundingPrivKey), remote.signature)
-
-        if (Scripts.checkValid(signedLocalCommitTx).isFailure) BECOME(wait, CLOSING) else {
-          val localCommit = LocalCommit(0L, wait.localSpec, htlcTxsAndSigs = Nil, signedLocalCommitTx)
-          val commits = Commitments(wait.localParams, wait.remoteParams, localCommit, wait.remoteCommit,
-            localChanges = Changes(proposed = Vector.empty, signed = Vector.empty, acked = Vector.empty),
-            remoteChanges = Changes(proposed = Vector.empty, signed = Vector.empty, acked = Vector.empty),
-            localNextHtlcId = 0L, remoteNextHtlcId = 0L, Right(Tools.randomPrivKey.toPoint),
-            wait.localCommitTx.input, ShaHashesWithIndex(Map.empty, None), wait.channelId)
-
-          BECOME(WaitFundingDoneData(wait.announce, None, None,
-            wait.fundingTx, commits), WAIT_FUNDING_DONE)
+        verifyTheirFirstRemoteCommitSig(wait.core, remoteSig = remote.signature) match {
+          case Success(commitTxOk) => startWait(wait, wait.core, commitTxOk, wait.fundingTx)
+          case _ => BECOME(wait, CLOSING)
         }
+
+
+      // We have asked an external funder to sign a funding tx and got a positive response
+      case (WaitFundingData(announce, cmd, accept), external: FundingTxSigned, WAIT_FOR_FUNDING) =>
+        val wfsc \ fundingCreatedMessage = signFunding(cmd, accept, external.txHash, external.outIndex)
+        val data = WaitFundingSignedRemoteData(announce, wfsc, firstCommitTx = None, external.txHash.reverse)
+        BECOME(data, WAIT_FUNDING_SIGNED) SEND fundingCreatedMessage
+
+
+      // We have asked a remote peer to sign our first commit and got a remote signature
+      case (wait: WaitFundingSignedRemoteData, remote: FundingSigned, WAIT_FUNDING_SIGNED) =>
+        verifyTheirFirstRemoteCommitSig(core = wait.core, remoteSig = remote.signature) match {
+          case Success(commitTxOk) => me UPDATA wait.copy(firstCommitTx = Some apply commitTxOk)
+          case _ => BECOME(wait, CLOSING)
+        }
+
+
+      // We have asked an external funder to broadcast a signed fundTx and got a positive response
+      case (wait: WaitFundingSignedRemoteData, FundingTxBroadcasted(_, remoteFundTx), WAIT_FUNDING_SIGNED)
+        // GUARD: this remote funding transaction blongs to this exact channel
+        if wait.txid == remoteFundTx.txid && wait.firstCommitTx.isDefined =>
+        startWait(wait, wait.core, wait.firstCommitTx.get, remoteFundTx)
+
+
+      // We have asked an external funder to broadcast a signed fundTx and got an onchain ack
+      case (wait: WaitFundingSignedRemoteData, CMDFunding(remoteFundTx), WAIT_FUNDING_SIGNED)
+        // GUARD: this remote funding transaction blongs to this exact channel
+        if wait.txid == remoteFundTx.txid && wait.firstCommitTx.isDefined =>
+        startWait(wait, wait.core, wait.firstCommitTx.get, remoteFundTx)
 
 
       // FUNDING TX IS BROADCASTED AT THIS POINT
@@ -490,6 +504,31 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
 
     // Change has been successfully processed
     events onProcessSuccess Tuple3(me, data, change)
+  }
+
+  private def signFunding(cmd: CMDOpenChannel, accept: AcceptChannel, txHash: BinaryData, outIndex: Int) = {
+    val (localSpec: CommitmentSpec, localCommitTx: CommitTx, remoteSpec: CommitmentSpec, remoteCommitTx: CommitTx) =
+      Funding.makeFirstFunderCommitTxs(cmd, accept, txHash, outIndex, accept.firstPerCommitmentPoint)
+
+    val chanId = Tools.toLongId(txHash, outIndex)
+    val localSigOfRemoteTx = Scripts.sign(remoteCommitTx, cmd.localParams.fundingPrivKey)
+    val firstRemoteCommit = RemoteCommit(0L, remoteSpec, remoteCommitTx.tx.txid, accept.firstPerCommitmentPoint)
+    val wfsc = WaitFundingSignedCore(cmd.localParams, chanId, accept, localSpec, localCommitTx, firstRemoteCommit)
+    wfsc -> FundingCreated(cmd.tempChanId, txHash, outIndex, localSigOfRemoteTx)
+  }
+
+  private def verifyTheirFirstRemoteCommitSig(core: WaitFundingSignedCore, remoteSig: BinaryData) =
+    Scripts checkValid Scripts.addSigs(core.localCommitTx, core.localParams.fundingPrivKey.publicKey,
+      core.remoteParams.fundingPubkey, Scripts.sign(core.localCommitTx, core.localParams.fundingPrivKey), remoteSig)
+
+  def startWait(some: ChannelData, core: WaitFundingSignedCore, signedLocalCommitTx: CommitTx, fundingTx: Transaction) = {
+    val commits = Commitments(core.localParams, core.remoteParams, LocalCommit(0L, core.localSpec, Nil, signedLocalCommitTx), core.remoteCommit,
+      localChanges = Changes(Vector.empty, Vector.empty, Vector.empty), remoteChanges = Changes(Vector.empty, Vector.empty, Vector.empty),
+      localNextHtlcId = 0L, remoteNextHtlcId = 0L, remoteNextCommitInfo = Right(Tools.randomPrivKey.toPoint), core.localCommitTx.input,
+      remotePerCommitmentSecrets = ShaHashesWithIndex(Map.empty, None), core.channelId)
+
+    // A funding tx is broadcasted at this point, we should always take care to save a channel
+    BECOME(WaitFundingDoneData(some.announce, None, None, fundingTx, commits), WAIT_FUNDING_DONE)
   }
 
   private def makeFundingLocked(cs: Commitments) = {

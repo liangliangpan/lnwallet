@@ -46,9 +46,16 @@ case class InitData(announce: NodeAnnouncement) extends ChannelData
 case class WaitAcceptData(announce: NodeAnnouncement, cmd: CMDOpenChannel) extends ChannelData
 case class WaitFundingData(announce: NodeAnnouncement, cmd: CMDOpenChannel, accept: AcceptChannel) extends ChannelData
 
-case class WaitFundingSignedData(announce: NodeAnnouncement, localParams: LocalParams, channelId: BinaryData,
-                                 remoteParams: AcceptChannel, fundingTx: Transaction, localSpec: CommitmentSpec,
-                                 localCommitTx: CommitTx, remoteCommit: RemoteCommit) extends ChannelData
+// Funding tx may arrive locally or from external funder
+case class WaitFundingSignedCore(localParams: LocalParams, channelId: BinaryData,
+                                 remoteParams: AcceptChannel, localSpec: CommitmentSpec,
+                                 localCommitTx: CommitTx, remoteCommit: RemoteCommit)
+
+case class WaitFundingSignedData(announce: NodeAnnouncement, core: WaitFundingSignedCore,
+                                 fundingTx: Transaction) extends ChannelData
+
+case class WaitFundingSignedRemoteData(announce: NodeAnnouncement, core: WaitFundingSignedCore,
+                                       firstCommitTx: Option[CommitTx], txid: BinaryData) extends ChannelData
 
 // All the data below will be stored
 case class WaitFundingDoneData(announce: NodeAnnouncement, our: Option[FundingLocked],
