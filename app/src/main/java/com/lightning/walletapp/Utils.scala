@@ -236,8 +236,7 @@ trait TimerActivity extends AppCompatActivity { me =>
       val unsignedRequestWithFee = pay.getRequest
       unsignedRequestWithFee.feePerKb = selectedFeePerKb
       app.kit.wallet addLocalInputsToTx unsignedRequestWithFee
-      app.kit.wallet maybeAddOpReturnPubKeyHash unsignedRequestWithFee
-      unsignedRequestWithFee
+      TxWrap maybeAddOpReturn unsignedRequestWithFee
     }
 
     def messageWhenMakingTx: PartialFunction[Throwable, CharSequence] = {

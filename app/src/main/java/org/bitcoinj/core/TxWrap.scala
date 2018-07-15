@@ -3,10 +3,21 @@ package org.bitcoinj.core
 import com.lightning.walletapp.ln._
 import com.lightning.walletapp.Utils._
 import scala.collection.JavaConverters._
+import org.bitcoinj.wallet.WalletTransaction.Pool._
 import com.lightning.walletapp.{AddrData, P2WSHData}
-import org.bitcoinj.wallet.WalletTransaction.Pool.{UNSPENT, SPENT, PENDING}
+import org.bitcoinj.script.ScriptBuilder
+import org.bitcoinj.wallet.SendRequest
 import scala.util.Try
 
+
+object TxWrap {
+  def maybeAddOpReturn(req: SendRequest) = {
+    val key = req.tx.getInput(0).getConnectedRedeemData(app.kit.wallet).getFullKey
+    val noMyOuts = !req.tx.getOutputs.asScala.exists(output => output isMine app.kit.wallet)
+    if (noMyOuts) req.tx.addOutput(Coin.ZERO, ScriptBuilder createOpReturnScript key.getPubKeyHash)
+    req
+  }
+}
 
 class TxWrap(val tx: Transaction) {
   private val nativeSentFromMe = tx.getInputs.asScala.flatMap(inOuts).foldLeft(Coin.ZERO) {

@@ -159,7 +159,6 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
     override def txConfirmed(txj: Transaction) = {
       // Update title amounts, mark txj as confirmed
       UITask(adapter.notifyDataSetChanged).run
-      Vibrator.vibrate
       updTitle.run
     }
 
@@ -580,7 +579,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
     def next(ms: MilliSatoshi) = new TxProcessor {
       def futureProcess(unsignedRequest: SendRequest) =
-        and(app.kit blockingSend app.kit.sign(unsignedRequest).tx)
+        and(app.kit blockSend app.kit.sign(unsignedRequest).tx)
 
       val pay = AddrData(ms, addr)
       def onTxFail(sendingError: Throwable) = {
@@ -619,7 +618,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
       // Parent transaction hiding must happen before child is broadcasted
       val unsigned = childPaysForParent(app.kit.wallet, wrap.tx, newFee)
-      app.kit blockingSend app.kit.sign(unsigned).tx
+      app.kit blockSend app.kit.sign(unsigned).tx
     }
 
     def onError(err: Throwable) = {

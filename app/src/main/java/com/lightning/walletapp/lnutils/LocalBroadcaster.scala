@@ -40,7 +40,7 @@ object LocalBroadcaster extends Broadcaster {
     case (_, close: ClosingData, _: Command) =>
       val tier12Publishable = for (state <- close.tier12States if state.isPublishable) yield state.txn
       val toSend = close.mutualClose ++ close.localCommit.map(_.commitTx) ++ tier12Publishable
-      for (tx <- toSend) try app.kit blockingSend tx catch none
+      for (tx <- toSend) try app.kit blockSend tx catch none
   }
 
   override def onBecome = {
@@ -56,7 +56,7 @@ object LocalBroadcaster extends Broadcaster {
     case (_, wait: WaitFundingDoneData, _, _) =>
       val fundingScript = wait.commitments.commitInput.txOut.publicKeyScript
       app.kit.wallet.addWatchedScripts(Collections singletonList fundingScript)
-      app.kit.blockingSend(wait.fundingTx)
+      app.kit.blockSend(wait.fundingTx)
 
     case (chan, norm: NormalData, OFFLINE, OPEN) =>
       // Updated feerates may arrive sooner then channel gets open
