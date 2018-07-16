@@ -22,6 +22,7 @@
     <LinearLayout
         android:visibility="gone"
         android:gravity="top|center"
+        android:background="@color/ln"
         android:orientation="vertical"
         android:id="@+id/externalFundWrap"
         android:layout_width="fill_parent"
@@ -29,6 +30,7 @@
 
         <TextView
             style="@style/Info"
+            android:textColor="#FFFFFFFF"
             android:id="@+id/externalFundInfo"
             android:layout_width="wrap_content"
             android:layout_marginTop="@dimen/app_padding"
@@ -38,6 +40,7 @@
             style="@style/Info"
             android:layout_width="wrap_content"
             android:text="@string/dialog_cancel"
+            android:id="@+id/externalFundCancel"
             android:layout_marginBottom="@dimen/app_padding"/>
 
     </LinearLayout>

@@ -312,8 +312,8 @@ object ImplicitJsonFormats extends DefaultJsonProtocol { me =>
       Fail](Fail.apply, "userId", "code", "reason"), tag = "Fail")
 
   implicit val startFmt: JsonFormat[Start] =
-    taggedJsonFmt(jsonFormat[UserId, Satoshi, String, Option[String],
-      Start](Start.apply, "userId", "fundingAmount", "url", "extra"), tag = "Start")
+    taggedJsonFmt(jsonFormat[UserId, Satoshi, String, Int, Option[String],
+      Start](Start.apply, "userId", "fundingAmount", "host", "port", "extra"), tag = "Start")
 
   implicit val prepareFundingTxFmt: JsonFormat[PrepareFundingTx] = taggedJsonFmt(jsonFormat[UserId, BinaryData,
     PrepareFundingTx](PrepareFundingTx.apply, "userId", "pubkeyScript"), tag = "PrepareFundingTx")

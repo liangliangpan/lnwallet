@@ -181,8 +181,8 @@
     <string name="err_publish_error">Can not proceed with external funding because a funding transaction failed to broadcast</string>
     <string name="err_fund_internal_error">Can not proceed with external funding because a remote internal error occurred</string>
 
-    <string name="fund_connecting"><![CDATA[<small>Connecting to <i>%1$s</i></small><br>Funding amount %2$s<br>Expires at <strong>%3$s</strong>]]></string>
-    <string name="fund_connected"><![CDATA[<small>Connected to <i>%1$s</i></small><br>Funding amount %2$s<br>Expires at <strong>%3$s</strong>]]></string>
+    <string name="ex_fund_connecting"><![CDATA[<small>connecting to <i>%1$s</i></small><br>funding amount %2$s<br>expires at <strong>%3$s</strong>]]></string>
+    <string name="ex_fund_connected"><![CDATA[<small>connected to <i>%1$s</i></small><br>funding amount %2$s<br>expires at <strong>%3$s</strong>]]></string>
 
     <!-- SPECIFIC TO LIGHTNING NETWORK -->
 
@@ -277,7 +277,8 @@
         <item><![CDATA[<i>Public channels unknown</i>]]></item>
     </array>
 
-    <string name="ln_ops_start_fund_title"><![CDATA[<small>Got questions or feel lost?<br><a href=http://lightning-wallet.com/using-lightning-wallet#using-lightning-wallet>Read about Lightning Network</a></small><br><br>Fund a payment channel]]></string>
+    <string name="ln_ops_start_fund_external_title"><![CDATA[<small>Got questions or feel lost?<br><a href=http://lightning-wallet.com/using-lightning-wallet#using-lightning-wallet>Read about Lightning Network</a></small><br><br>fund new channel<br>from external source<br><br><i>%1$s</i><br>funding amount %2$s]]></string>
+    <string name="ln_ops_start_fund_title"><![CDATA[<small>Got questions or feel lost?<br><a href=http://lightning-wallet.com/using-lightning-wallet#using-lightning-wallet>Read about Lightning Network</a></small><br><br>fund new channel<br>from local wallet]]></string>
     <string name="ln_ops_start_fund_node_view"><![CDATA[%1$s<br><font color=#999999><i>opening a channel</i></font><br><small>%2$s</small><br><br><font color=#999999>Peer node ID</font><br><small>%3$s</small>]]></string>
     <string name="ln_ops_start_node_view"><![CDATA[%1$s<br><small>%2$s<br><font color=#999999>%3$s</font></small>]]></string>
 </resources>
