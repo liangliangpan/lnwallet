@@ -33,7 +33,8 @@ object ExternalFunder {
 }
 
 case class Worker(params: Started) { self =>
-  val loaded = params.start.url + params.start.toJson.toString.hex
+  val point = params.start.host + ":" + params.start.port
+  val loaded = "ws://" + point + "/" + params.start.toJson.toString.hex
   val ws: WebSocket = (new WebSocketFactory).createSocket(loaded, 7500)
   var listeners: Set[ExternalFunderListener] = Set.empty
   var lastMessage: FundMsg = params.start

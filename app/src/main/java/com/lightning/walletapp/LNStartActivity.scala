@@ -73,7 +73,8 @@ class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
   def humanWorker(wrk: Worker, base: Int) = {
     val expiry = me time new Date(wrk.params.expiry)
     val amount = denom withSign wrk.params.start.fundingAmount
-    host.getString(base).format(wrk.params.start.host, amount, expiry)
+    host.getString(base).format(wrk.params.start.host, expiry,
+      amount, denom withSign wrk.params.fee)
   }
 
   var spawnExternalFunder: Started => Unit = none
