@@ -88,7 +88,7 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
 
 
       // We have asked an external funder to sign a funding tx and got a positive response
-      case (WaitFundingData(announce, cmd, accept), external: FundingTxSigned, WAIT_FOR_FUNDING) =>
+      case (WaitFundingData(announce, cmd, accept), external: FundingTxReady, WAIT_FOR_FUNDING) =>
         val wfsc \ fundingCreatedMessage = signFunding(cmd, accept, external.txHash, external.outIndex)
         val data = WaitFundingSignedRemoteData(announce, wfsc, firstCommitTx = None, external.txHash.reverse)
         BECOME(data, WAIT_FUNDING_SIGNED) SEND fundingCreatedMessage

@@ -182,8 +182,7 @@
     <string name="err_fund_reserve_expired">Can not proceed with external funding because your reserved amount hit an expiry deadline</string>
     <string name="err_fund_funding_pending">Can not proceed with external funding because your reserved amount is still being allocated</string>
     <string name="err_fund_funding_exists">Can not proceed with external funding because another reserved amount of yours exists already</string>
-    <string name="err_fund_signed_none">Can not proceed with external funding because a signed funding transaction is missing</string>
-    <string name="err_fund_funding_none">Can not proceed with external funding because a funding transaction signing failed</string>
+    <string name="err_publish_error">Can not proceed with external funding because a funding transaction failed to broadcast</string>
     <string name="err_fund_internal_error">Can not proceed with external funding because a remote internal error occurred</string>
 
     <string name="fund_connecting"><![CDATA[Connecting to <i>%1$s</i><br>Expires at <strong>%2$s</strong><br>Funding amount %3$s<br><br><small>Channel is going to be funded externally</small>]]></string>

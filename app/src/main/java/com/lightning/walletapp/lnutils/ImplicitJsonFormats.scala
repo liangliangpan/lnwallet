@@ -285,8 +285,8 @@ object ImplicitJsonFormats extends DefaultJsonProtocol { me =>
 
   implicit object JsonMessageFmt extends JsonFormat[FundMsg] {
     def write(unserialized: FundMsg): JsValue = unserialized match {
-      case unserialiedMessage: SignFundingTx => unserialiedMessage.toJson
-      case unserialiedMessage: FundingTxSigned => unserialiedMessage.toJson
+      case unserialiedMessage: FundingTxReady => unserialiedMessage.toJson
+      case unserialiedMessage: PrepareFundingTx => unserialiedMessage.toJson
       case unserialiedMessage: BroadcastFundingTx => unserialiedMessage.toJson
       case unserialiedMessage: FundingTxBroadcasted => unserialiedMessage.toJson
       case unserialiedMessage: Started => unserialiedMessage.toJson
@@ -296,8 +296,8 @@ object ImplicitJsonFormats extends DefaultJsonProtocol { me =>
 
     def read(serialized: JsValue): FundMsg =
       serialized.asJsObject fields "tag" match {
-        case JsString("SignFundingTx") => serialized.convertTo[SignFundingTx]
-        case JsString("FundingTxSigned") => serialized.convertTo[FundingTxSigned]
+        case JsString("FundingTxReady") => serialized.convertTo[FundingTxReady]
+        case JsString("PrepareFundingTx") => serialized.convertTo[PrepareFundingTx]
         case JsString("BroadcastFundingTx") => serialized.convertTo[BroadcastFundingTx]
         case JsString("FundingTxBroadcasted") => serialized.convertTo[FundingTxBroadcasted]
         case JsString("Started") => serialized.convertTo[Started]
@@ -315,11 +315,11 @@ object ImplicitJsonFormats extends DefaultJsonProtocol { me =>
     taggedJsonFmt(jsonFormat[UserId, Satoshi, String, Option[String],
       Start](Start.apply, "userId", "fundingAmount", "url", "extra"), tag = "Start")
 
-  implicit val fundingTxSignedFmt: JsonFormat[FundingTxSigned] = taggedJsonFmt(jsonFormat[UserId, BinaryData, Int,
-    FundingTxSigned](FundingTxSigned.apply, "userId", "txHash", "outIndex"), tag = "FundingTxSigned")
+  implicit val prepareFundingTxFmt: JsonFormat[PrepareFundingTx] = taggedJsonFmt(jsonFormat[UserId, BinaryData,
+    PrepareFundingTx](PrepareFundingTx.apply, "userId", "pubkeyScript"), tag = "PrepareFundingTx")
 
-  implicit val signFundingTxFmt: JsonFormat[SignFundingTx] = taggedJsonFmt(jsonFormat[UserId, BinaryData,
-    SignFundingTx](SignFundingTx.apply, "userId", "pubkeyScript"), tag = "SignFundingTx")
+  implicit val fundingTxReadyFmt: JsonFormat[FundingTxReady] = taggedJsonFmt(jsonFormat[UserId, BinaryData, Int,
+    FundingTxReady](FundingTxReady.apply, "userId", "txHash", "outIndex"), tag = "FundingTxReady")
 
   implicit val broadcastFundingTxFmt: JsonFormat[BroadcastFundingTx] = taggedJsonFmt(jsonFormat[UserId, BinaryData,
     BroadcastFundingTx](BroadcastFundingTx.apply, "userId", "txHash"), tag = "BroadcastFundingTx")

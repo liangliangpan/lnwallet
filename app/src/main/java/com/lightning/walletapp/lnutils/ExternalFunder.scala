@@ -31,14 +31,14 @@ object ExternalFunder {
 
   val map = Map(
     FAIL_VERIFY_ERROR -> err_fund_verify_error,
+    FAIL_NOT_VERIFIED_YET-> err_fund_not_verified_yet,
     FAIL_INTERNAL_ERROR -> err_fund_internal_error,
-    FAIL_NOT_VERIFIED_YET -> err_fund_not_verified_yet,
-    FAIL_COULD_NOT_RESERVE -> err_fund_could_not_reserve,
+
+    FAIL_RESERVE_FAILED -> err_fund_reserve_failed,
     FAIL_RESERVE_EXPIRED -> err_fund_reserve_expired,
     FAIL_FUNDING_PENDING -> err_fund_funding_pending,
     FAIL_FUNDING_EXISTS -> err_fund_funding_exists,
-    FAIL_FUNDING_NONE -> err_fund_funding_none,
-    FAIL_SIGNED_NONE -> err_fund_signed_none
+    FAIL_PUBLISH_ERROR -> err_publish_error
   )
 }
 
