@@ -184,9 +184,10 @@
     <string name="err_fund_funding_exists">Can not proceed with external funding because another reserved amount of yours exists already</string>
     <string name="err_publish_error">Can not proceed with external funding because a funding transaction failed to broadcast</string>
     <string name="err_fund_internal_error">Can not proceed with external funding because a remote internal error occurred</string>
+    <string name="err_fund_disconnect">Disconnected from external funder</string>
 
-    <string name="ex_fund_connecting"><![CDATA[<small>connecting to <i>%1$s</i></small><br>expires at <strong>%2$s</strong><br>funding amount %3$s<br>funding fee %4$s]]></string>
-    <string name="ex_fund_connected"><![CDATA[<small>connected to <i>%1$s</i></small><br>expires at <strong>%2$s</strong><br>funding amount %3$s<br>funding fee %4$s]]></string>
+    <string name="ex_fund_info"><![CDATA[<small>connected to <i>%1$s</i></small><br>expires at <strong>%2$s</strong><br>funding amount %3$s<br>funding fee %4$s]]></string>
+    <string name="ex_fund_accept"><![CDATA[<small>funding from <i>%1$s</i></small><br>capacity %2$s<br>funding fee %3$s]]></string>
 
     <!-- SPECIFIC TO LIGHTNING NETWORK -->
 
@@ -286,8 +287,8 @@
         <item><![CDATA[<i>Public channels unknown</i>]]></item>
     </array>
 
-    <string name="ln_ops_start_fund_external_title"><![CDATA[<small>Got questions or feel lost?<br><a href=http://lightning-wallet.com/using-lightning-wallet#using-lightning-wallet>Read about Lightning Network</a></small><br><br>Fund a payment channel<br>from external source<br><br><i>%1$s</i><br>Funding amount %2$s]]></string>
-    <string name="ln_ops_start_fund_title"><![CDATA[<small>Есть вопросы?<br><a href=http://lightning-wallet.com/using-lightning-wallet#using-lightning-wallet>Почитайте про Молнию</a></small><br><br>Открыть платежный канал]]></string>
+    <string name="ln_ops_start_fund_external_title"><![CDATA[<small>Got questions or feel lost?<br><a href=http://lightning-wallet.com/using-lightning-wallet#using-lightning-wallet>Read about Lightning Network</a></small><br><br>payment channel funding<br><i>from external source</i>]]></string>
+    <string name="ln_ops_start_fund_local_title"><![CDATA[<small>Got questions or feel lost?<br><a href=http://lightning-wallet.com/using-lightning-wallet#using-lightning-wallet>Read about Lightning Network</a></small><br><br>payment channel funding<br><i>from local wallet</i>]]></string>
     <string name="ln_ops_start_fund_node_view"><![CDATA[%1$s<br><font color=#999999><i>открытие нового канала</i></font><br><small>%2$s</small><br><br><font color=#999999>публичный ключ пира</font><br><small>%3$s</small>]]></string>
     <string name="ln_ops_start_node_view"><![CDATA[%1$s<br><small>%2$s<br><font color=#999999>%3$s</font></small>]]></string>
 </resources>

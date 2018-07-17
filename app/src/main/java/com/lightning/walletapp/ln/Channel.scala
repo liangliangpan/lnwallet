@@ -72,6 +72,9 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
         BECOME(WaitFundingData(announce, cmd, accept), WAIT_FOR_FUNDING)
 
 
+      // LOCAL FUNDING FLOW
+
+
       case (WaitFundingData(announce, cmd, accept), CMDFunding(fundTx), WAIT_FOR_FUNDING) =>
         // They have accepted our proposal, let them sign a first commit so we can broadcast a funding later
         if (fundTx.txOut(cmd.outIndex).amount.amount != cmd.realFundingAmountSat) throw new LightningException
@@ -87,7 +90,10 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
         }
 
 
-      // We have asked an external funder to sign a funding tx and got a positive response
+      // REMOTE FUNDING FLOW
+
+
+      // We have asked an external funder to prepare a funding tx and got a positive response
       case (WaitFundingData(announce, cmd, accept), external: FundingTxReady, WAIT_FOR_FUNDING) =>
         val wfsc \ fundingCreatedMessage = signFunding(cmd, accept, external.txHash, external.outIndex)
         val data = WaitFundingSignedRemoteData(announce, wfsc, firstCommitTx = None, external.txHash.reverse)

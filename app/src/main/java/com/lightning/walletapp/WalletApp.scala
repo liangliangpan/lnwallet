@@ -98,7 +98,7 @@ class WalletApp extends Application { me =>
     private[this] val prefixes = PaymentRequest.prefixes.values mkString "|"
     private[this] val nodeLink = "([a-fA-F0-9]{66})@([a-zA-Z0-9:\\.\\-_]+):([0-9]+)".r
     private[this] val lnLink = s"(?im).*?($prefixes)([0-9]{1,}[a-z0-9]+){1}".r.unanchored
-    private[this] val exFunding = "(externalfunding):([a-z0-9]+)".r
+    private[this] val funder = "(lnbcfunder|lntbfunder|lnbcrtfunder):([a-z0-9]+)".r
 
     private def resolveURI(uri: BitcoinURI) = {
       val hasChans = ChannelManager.notClosing.exists(isOperational)
@@ -112,7 +112,7 @@ class WalletApp extends Application { me =>
       case _ if rawText startsWith "BITCOIN" => self resolveURI new BitcoinURI(params, rawText.toLowerCase)
       case nodeLink(key, host, port) => mkNodeAnnouncement(PublicKey(key), host, port.toInt)
       case lnLink(prefix, req) => PaymentRequest read s"$prefix$req".toLowerCase
-      case exFunding(_, paramsHex) => to[Started](paramsHex.hex2asci)
+      case funder(_, paramsHex) => to[Started](paramsHex.hex2asci)
       case _ => toAddress(rawText)
     }
   }
@@ -154,8 +154,8 @@ class WalletApp extends Application { me =>
         case _ =>
       }
 
-      override def onOperational(nodeId: PublicKey, their: Init) = fromNode(notClosing, nodeId).foreach(_ process CMDOnline)
       override def onTerminalError(nodeId: PublicKey) = fromNode(notClosing, nodeId).foreach(_ process CMDLocalShutdown)
+      override def onOperational(nodeId: PublicKey) = fromNode(notClosing, nodeId).foreach(_ process CMDOnline)
       override def onIncompatible(nodeId: PublicKey) = onTerminalError(nodeId)
 
       override def onDisconnect(nodeId: PublicKey) = for {

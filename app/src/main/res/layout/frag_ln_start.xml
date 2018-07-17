@@ -22,7 +22,6 @@
     <LinearLayout
         android:visibility="gone"
         android:gravity="top|center"
-        android:background="@color/ln"
         android:orientation="vertical"
         android:id="@+id/externalFundWrap"
         android:layout_width="fill_parent"

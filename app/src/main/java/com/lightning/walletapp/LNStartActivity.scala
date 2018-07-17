@@ -66,16 +66,9 @@ object FragLNStart {
 }
 
 class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
-  override def onDestroy = wrap(super.onDestroy)(ExternalFunder.worker foreach ExternalFunder.disconnectWorker)
+  override def onDestroy = wrap(super.onDestroy)(ExternalFunder.worker foreach ExternalFunder.disconnectWSWrap)
   override def onCreateView(inf: LayoutInflater, vg: ViewGroup, bn: Bundle) = inf.inflate(R.layout.frag_ln_start, vg, false)
   lazy val host: LNStartActivity = me.getActivity.asInstanceOf[LNStartActivity]
-
-  def humanWorker(wrk: Worker, base: Int) = {
-    val expiry = me time new Date(wrk.params.expiry)
-    val amount = denom withSign wrk.params.start.fundingAmount
-    host.getString(base).format(wrk.params.start.host, expiry,
-      amount, denom withSign wrk.params.fee)
-  }
 
   var spawnExternalFunder: Started => Unit = none
   override def onViewCreated(view: View, state: Bundle) = {
@@ -104,49 +97,55 @@ class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
       host goTo classOf[LNStartFundActivity]
     }
 
-    val err2String = Map(
-      FAIL_VERIFY_ERROR -> err_fund_verify_error,
-      FAIL_NOT_VERIFIED_YET -> err_fund_not_verified_yet,
-      FAIL_INTERNAL_ERROR -> err_fund_internal_error,
+    def exfunderInfo(wrk: WSWrap, color: Int) = host UITask {
+      val humanAmountSum = denom withSign wrk.params.start.fundingAmount
+      val humanExpiry = me time new Date(wrk.params.expiry)
+      val humanFeeSum = denom withSign wrk.params.fee
+      val base = host getString ex_fund_info
 
-      FAIL_RESERVE_FAILED -> err_fund_reserve_failed,
-      FAIL_RESERVE_EXPIRED -> err_fund_reserve_expired,
-      FAIL_FUNDING_PENDING -> err_fund_funding_pending,
-      FAIL_FUNDING_EXISTS -> err_fund_funding_exists,
-      FAIL_PUBLISH_ERROR -> err_publish_error
-    )
+      val info = base.format(wrk.params.start.host, humanExpiry, humanAmountSum, humanFeeSum)
+      externalFundWrap setBackgroundColor getResources.getColor(color, null)
+      externalFundInfo setText info.html
+    }
 
     spawnExternalFunder = started => {
-      val freshWorker = Worker(started)
-      externalFundWrap setVisibility View.VISIBLE
-      externalFundInfo setText humanWorker(freshWorker, ex_fund_connecting).html
-      val disconnect = host.onButtonTap(ExternalFunder disconnectWorker freshWorker)
+      val freshWSWrap = WSWrap(started)
+      val disconnect = host.onButtonTap(ExternalFunder disconnectWSWrap freshWSWrap)
+      exfunderInfo(freshWSWrap, color = R.color.material_blue_grey_800).run
       externalFundCancel setOnClickListener disconnect
+      externalFundWrap setVisibility View.VISIBLE
 
-      freshWorker.listeners += new ExternalFunderListener {
-        override def onMessage(msg: FundMsg) = host.UITask(externalFundInfo setText humanWorker(freshWorker, ex_fund_connected).html).run
-        override def onOffline = host.UITask(externalFundInfo setText humanWorker(freshWorker, ex_fund_connecting).html).run
+      val err2String =
+        Map(FAIL_VERIFY_ERROR -> err_fund_verify_error)
+          .updated(FAIL_NOT_VERIFIED_YET, err_fund_not_verified_yet)
+          .updated(FAIL_INTERNAL_ERROR, err_fund_internal_error)
+          .updated(FAIL_RESERVE_FAILED, err_fund_reserve_failed)
+          .updated(FAIL_RESERVE_EXPIRED, err_fund_reserve_expired)
+          .updated(FAIL_FUNDING_PENDING, err_fund_funding_pending)
+          .updated(FAIL_FUNDING_EXISTS, err_fund_funding_exists)
+          .updated(FAIL_PUBLISH_ERROR, err_publish_error)
+
+      freshWSWrap.listeners += new ExternalFunderListener {
         override def onDisconnect = host.UITask(externalFundWrap setVisibility View.GONE).run
+        override def onOffline = exfunderInfo(freshWSWrap, R.color.material_blue_grey_800).run
+        override def onMessage(msg: FundMsg) = exfunderInfo(freshWSWrap, R.color.ln).run
       }
 
-      freshWorker.listeners += new ExternalFunderListener {
-        override def onMessage(message: FundMsg) = message match {
+      freshWSWrap.listeners += new ExternalFunderListener {
+        override def onDisconnect = freshWSWrap.lastMessage match {
           case fail: Fail if err2String contains fail.code => host onFail getString(err2String apply fail.code)
-          case unexpected: Fail => host onFail getString(err2String apply FAIL_INTERNAL_ERROR)
-          case _ =>
+          case unexpectedErrorCode: Fail => host onFail getString(err2String apply FAIL_INTERNAL_ERROR)
+          case _ => host.UITask(app toast err_fund_disconnect).run
         }
-      }
 
-      freshWorker.listeners += new ExternalFunderListener {
         override def onMessage(message: FundMsg) = message match {
-          case fail: Fail if fail.code != FAIL_NOT_VERIFIED_YET => disconnect onClick null
-          case fundingTxBroadcasted: FundingTxBroadcasted => disconnect onClick null
-          case _ =>
+          case _: Fail => ExternalFunder disconnectWSWrap freshWSWrap
+          case _ => Tools log s"Websocket got $message"
         }
       }
 
       // Try to connect and clear TransData
-      ExternalFunder setWorker freshWorker
+      ExternalFunder setWSWrap freshWSWrap
       app.TransData.value = null
     }
 

@@ -14,25 +14,26 @@ import java.util
 
 
 object ExternalFunder {
-  var worker = Option.empty[Worker]
-  def setWorker(newWorker: Worker) = {
+  var worker = Option.empty[WSWrap]
+  def setWSWrap(newWSWrap: WSWrap) = {
     // This is guaranteed to disconnect it
-    for (old <- worker) disconnectWorker(old)
-    newWorker.ws.connectAsynchronously
-    worker = Some(newWorker)
+    for (old <- worker) disconnectWSWrap(old)
+    newWSWrap.ws.connectAsynchronously
+    worker = Some(newWSWrap)
   }
 
-  def disconnectWorker(oldWorker: Worker) =
-    for (wrk <- worker if wrk.params == oldWorker.params) {
+  def disconnectWSWrap(oldWorker: WSWrap) =
+    for (wsw <- worker if wsw.params == oldWorker.params) {
       // Only disconnect if old worker is also a current worker
-      for (lst <- wrk.listeners) lst.onDisconnect
-      wrk.ws.clearListeners
-      wrk.ws.disconnect
+      for (lst <- wsw.listeners) lst.onDisconnect
+      wsw.listeners = Set.empty
+      wsw.ws.clearListeners
+      wsw.ws.disconnect
       worker = None
     }
 }
 
-case class Worker(params: Started) { self =>
+case class WSWrap(params: Started) { self =>
   val point = params.start.host + ":" + params.start.port
   val loaded = "ws://" + point + "/" + params.start.toJson.toString.hex
   val ws: WebSocket = (new WebSocketFactory).createSocket(loaded, 7500)
@@ -41,8 +42,10 @@ case class Worker(params: Started) { self =>
   var attemptsLeft: Int = 5
 
   type JavaList = util.List[String]
-  type JavaMap = util.Map[String, JavaList]
-  def shouldReconnect: Boolean = lastMessage match {
+  type JavaListMap = util.Map[String, JavaList]
+  def send(msg: FundMsg) = ws sendText msg.toJson.toString
+
+  def shouldReconnect = lastMessage match {
     case err: Fail => err.code == FAIL_NOT_VERIFIED_YET
     case _: Fail | _: FundingTxBroadcasted => false
     case _ => attemptsLeft > 0
@@ -53,11 +56,11 @@ case class Worker(params: Started) { self =>
     override def onTextMessage(ws: WebSocket, message: String) = for (lst <- listeners) lst onMessage to[FundMsg](message)
     override def onDisconnected(ws: WebSocket, scf: WebSocketFrame, ccf: WebSocketFrame, cbs: Boolean) = onConnectError(ws, null)
 
-    override def onConnected(websocket: WebSocket, headers: JavaMap) = attemptsLeft = 5
+    override def onConnected(websocket: WebSocket, headers: JavaListMap) = attemptsLeft = 5
     override def onConnectError(ws: WebSocket, reason: WebSocketException) = if (shouldReconnect) {
       Obs.just(attemptsLeft -= 1).delay(5.seconds).foreach(in5Sec => for (lst <- listeners) lst.onAttempt)
       for (listener <- listeners) listener.onOffline
-    } else ExternalFunder disconnectWorker self
+    } else ExternalFunder disconnectWSWrap self
   }
 
   listeners += new ExternalFunderListener {

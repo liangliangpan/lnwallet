@@ -29,9 +29,8 @@ case object CMDProceed extends Command
 case object CMDOffline extends Command
 case object CMDOnline extends Command
 
-case class CMDOpenChannel(localParams: LocalParams, tempChanId: BinaryData, initialFeeratePerKw: Long,
-                          pushMsat: Long, remoteInit: Init, dummyRequest: SendRequest, outIndex: Int,
-                          realFundingAmountSat: Long) extends Command
+case class CMDOpenChannel(localParams: LocalParams, tempChanId: BinaryData, initialFeeratePerKw: Long, pushMsat: Long,
+                          dummyRequest: SendRequest, outIndex: Int, realFundingAmountSat: Long) extends Command
 
 case class CMDFailMalformedHtlc(id: Long, onionHash: BinaryData, code: Int) extends Command
 case class CMDFulfillHtlc(id: Long, preimage: BinaryData) extends Command
