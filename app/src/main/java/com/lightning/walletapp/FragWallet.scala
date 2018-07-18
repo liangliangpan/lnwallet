@@ -151,7 +151,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
     }
   }
 
-  val itemsListListener = new TxTracker with WalletCoinsReceivedEventListener {
+  val itemsListListener = new TxTracker {
     // isGreaterThan check because as of now both listeners are fired on incoming and outgoing txs
     def onCoinsSent(w: Wallet, txj: Transaction, a: Coin, b: Coin) = if (a isGreaterThan b) guard(txj)
     def onCoinsReceived(w: Wallet, txj: Transaction, a: Coin, b: Coin) = if (b isGreaterThan a) guard(txj)

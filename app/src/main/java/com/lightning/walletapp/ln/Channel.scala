@@ -78,14 +78,14 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
       case (WaitFundingData(announce, cmd, accept), CMDFunding(fundTx), WAIT_FOR_FUNDING) =>
         // They have accepted our proposal, let them sign a first commit so we can broadcast a funding later
         if (fundTx.txOut(cmd.outIndex).amount.amount != cmd.realFundingAmountSat) throw new LightningException
-        val wfsc \ fundingCreatedMessage = signFunding(cmd, accept, txHash = fundTx.hash, outIndex = cmd.outIndex)
-        BECOME(WaitFundingSignedData(announce, wfsc, fundTx), WAIT_FUNDING_SIGNED) SEND fundingCreatedMessage
+        val core \ fundingCreatedMessage = signFunding(cmd, accept, txHash = fundTx.hash, outIndex = cmd.outIndex)
+        BECOME(WaitFundingSignedData(announce, core, fundTx), WAIT_FUNDING_SIGNED) SEND fundingCreatedMessage
 
 
       // They have signed our first commit, we can broadcast a local funding tx
       case (wait: WaitFundingSignedData, remote: FundingSigned, WAIT_FUNDING_SIGNED) =>
-        verifyTheirFirstRemoteCommitSig(wait.core, remoteSig = remote.signature) match {
-          case Success(commitTxOk) => startWait(wait, wait.core, commitTxOk, wait.fundingTx)
+        verifyTheirFirstRemoteCommitTxSig(core = wait.core, remoteSig = remote.signature) match {
+          case Success(commitTx) => BECOME(wait makeWaitFundingDoneData commitTx, WAIT_FUNDING_DONE)
           case _ => BECOME(wait, CLOSING)
         }
 
@@ -94,30 +94,28 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
 
 
       // We have asked an external funder to prepare a funding tx and got a positive response
-      case (WaitFundingData(announce, cmd, accept), external: FundingTxReady, WAIT_FOR_FUNDING) =>
-        val wfsc \ fundingCreatedMessage = signFunding(cmd, accept, external.txHash, external.outIndex)
-        val data = WaitFundingSignedRemoteData(announce, wfsc, firstCommitTx = None, external.txHash.reverse)
+      case (WaitFundingData(announce, cmd, accept), ready: FundingTxReady, WAIT_FOR_FUNDING) =>
+        val core \ fundingCreatedMessage = signFunding(cmd, accept, ready.txHash, ready.outIndex)
+        val data = WaitFundingSignedRemoteData(announce, core, txHash = ready.txHash)
         BECOME(data, WAIT_FUNDING_SIGNED) SEND fundingCreatedMessage
 
 
       // We have asked a remote peer to sign our first commit and got a remote signature
       case (wait: WaitFundingSignedRemoteData, remote: FundingSigned, WAIT_FUNDING_SIGNED) =>
-        verifyTheirFirstRemoteCommitSig(core = wait.core, remoteSig = remote.signature) match {
-          case Success(commitTxOk) => me UPDATA wait.copy(firstCommitTx = Some apply commitTxOk)
+        verifyTheirFirstRemoteCommitTxSig(core = wait.core, remoteSig = remote.signature) match {
+          case Success(commitTx) => BECOME(wait makeWaitBroadcastRemoteData commitTx, WAIT_FUNDING_DONE)
           case _ => BECOME(wait, CLOSING)
         }
 
+      // Funder was not able to broadcast a funding tx, record this
+      case (wait: WaitBroadcastRemoteData, fail: Fail, WAIT_FUNDING_DONE) =>
+        val d1 = wait.copy(fail = Some apply fail)
+        me UPDATA STORE(d1)
 
-      // We have asked an external funder to broadcast a signed fundTx and got an onchain ack
-      case (wait: WaitFundingSignedRemoteData, CMDSpent(remoteFundTx), WAIT_FUNDING_SIGNED)
-        // GUARD: this remote funding transaction blongs to this exact channel
-        if wait.txid == remoteFundTx.txid =>
 
-        wait.firstCommitTx match {
-          // Ascribe blame on external funder for premature tx publishing
-          case Some(commit) => startWait(wait, wait.core, commit, remoteFundTx)
-          case None => BECOME(wait.copy(premature = true), CLOSING)
-        }
+      // We have asked an external funder to broadcast a funding tx and got an onchain event
+      case (wait: WaitBroadcastRemoteData, CMDSpent(fundTx), OFFLINE | WAIT_FUNDING_DONE) if wait.txHash == fundTx.hash =>
+        me UPDATA WaitFundingDoneData(wait.announce, our = None, their = None, fundingTx = fundTx, wait.commitments)
 
 
       // FUNDING TX IS BROADCASTED AT THIS POINT
@@ -377,6 +375,13 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
         doProcess(CMDHTLCProcess)
 
 
+      case (remote: WaitBroadcastRemoteData, cr: ChannelReestablish, OFFLINE) =>
+        val tooLong = Fail(FundMsg.FAIL_PUBLISH_ERROR, "Commit tx is taking too long")
+        val isOutdated = System.currentTimeMillis - remote.commitments.startedAt > 86400 * 1000L
+        if (isOutdated && remote.fail.isEmpty) me UPDATA remote.copy(fail = Some apply tooLong)
+        else BECOME(remote, WAIT_FUNDING_DONE)
+
+
       // We're exiting a sync state while waiting for their FundingLocked
       case (wait: WaitFundingDoneData, cr: ChannelReestablish, OFFLINE) =>
         BECOME(wait, WAIT_FUNDING_DONE)
@@ -388,7 +393,7 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
         // According to spec we need to re-send a last closing sig here
         val lastSigned = neg.localProposals.head.localClosingSigned
         List(neg.localShutdown, lastSigned) foreach SEND
-        BECOME(neg, NEGOTIATIONS) SEND lastSigned
+        BECOME(neg, NEGOTIATIONS)
 
 
       // SYNC: ONLINE/OFFLINE
@@ -485,7 +490,8 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
       case (null, close: ClosingData, null) => super.become(close, CLOSING)
       case (null, init: InitData, null) => super.become(init, WAIT_FOR_INIT)
       case (null, wait: WaitFundingDoneData, null) => super.become(wait, OFFLINE)
-      case (null, neg: NegotiationsData, null) => super.become(neg, OFFLINE)
+      case (null, wait: WaitBroadcastRemoteData, null) => super.become(wait, OFFLINE)
+      case (null, negs: NegotiationsData, null) => super.become(negs, OFFLINE)
       case (null, norm: NormalData, null) => super.become(norm, OFFLINE)
 
 
@@ -521,19 +527,9 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
     wfsc -> FundingCreated(cmd.tempChanId, txHash, outIndex, localSigOfRemoteTx)
   }
 
-  private def verifyTheirFirstRemoteCommitSig(core: WaitFundingSignedCore, remoteSig: BinaryData) =
+  private def verifyTheirFirstRemoteCommitTxSig(core: WaitFundingSignedCore, remoteSig: BinaryData) =
     Scripts checkValid Scripts.addSigs(core.localCommitTx, core.localParams.fundingPrivKey.publicKey,
       core.remoteParams.fundingPubkey, Scripts.sign(core.localCommitTx, core.localParams.fundingPrivKey), remoteSig)
-
-  def startWait(some: ChannelData, core: WaitFundingSignedCore, signedLocalCommitTx: CommitTx, fundingTx: Transaction) = {
-    val commits = Commitments(core.localParams, core.remoteParams, LocalCommit(0L, core.localSpec, Nil, signedLocalCommitTx), core.remoteCommit,
-      localChanges = Changes(Vector.empty, Vector.empty, Vector.empty), remoteChanges = Changes(Vector.empty, Vector.empty, Vector.empty),
-      localNextHtlcId = 0L, remoteNextHtlcId = 0L, remoteNextCommitInfo = Right(Tools.randomPrivKey.toPoint), core.localCommitTx.input,
-      remotePerCommitmentSecrets = ShaHashesWithIndex(Map.empty, None), core.channelId)
-
-    // A funding tx is broadcasted at this point, we should always take care to save a channel
-    BECOME(WaitFundingDoneData(some.announce, None, None, fundingTx, commits), WAIT_FUNDING_DONE)
-  }
 
   private def makeFundingLocked(cs: Commitments) = {
     val first = Generators.perCommitPoint(cs.localParams.shaSeed, 1L)
@@ -605,16 +601,15 @@ object Channel {
 
   def estimateCanSend(chan: Channel) = chan(_.reducedRemoteState.canSendMsat) getOrElse 0L
   def estimateCanSendCapped(chan: Channel) = math.min(estimateCanSend(chan), LNParams.maxHtlcValueMsat)
-  def isOpening(chan: Channel) = chan.data match { case _: WaitFundingDoneData => true case _ => false }
   def isOperational(chan: Channel) = chan.data match { case NormalData(_, _, None, None) => true case _ => false }
+  def isOpening(chan: Channel) = chan.data.isInstanceOf[WaitFundingDoneData] || chan.data.isInstanceOf[WaitBroadcastRemoteData]
   def inFlightHtlcs(chan: Channel) = chan(Commitments.latestRemoteCommit(_).spec.htlcs) getOrElse Set.empty
   def hasReceivedPayments(chan: Channel) = chan(_.remoteNextHtlcId).exists(_ > 0)
 
   def channelAndHop(chan: Channel) = for {
-    // Make sure this payment hop is real
-    Some(extraHop) <- chan(_.extraHop)
-    if extraHop.htlcMinimumMsat > 0L
-  } yield chan -> Vector(extraHop)
+    Some(maybeDummyExtraHop) <- chan(_.extraHop)
+    if maybeDummyExtraHop.htlcMinimumMsat > 0L
+  } yield chan -> Vector(maybeDummyExtraHop)
 }
 
 case class ChanReport(chan: Channel, cs: Commitments) {

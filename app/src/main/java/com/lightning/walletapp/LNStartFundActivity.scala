@@ -3,9 +3,9 @@ package com.lightning.walletapp
 import spray.json._
 import com.lightning.walletapp.ln._
 import com.lightning.walletapp.Utils._
-
 import scala.collection.JavaConverters._
 import com.lightning.walletapp.ln.wire._
+import com.lightning.walletapp.lnutils._
 import com.lightning.walletapp.R.string._
 import com.lightning.walletapp.ln.Tools._
 import com.lightning.walletapp.ln.Channel._
@@ -21,14 +21,12 @@ import fr.acinq.bitcoin.Crypto.PublicKey
 import org.bitcoinj.script.ScriptBuilder
 import org.bitcoinj.wallet.SendRequest
 import android.app.AlertDialog
+import java.util.Collections
 import android.os.Bundle
-import fr.acinq.bitcoin.{BinaryData, MilliSatoshi, Satoshi}
+
+import fr.acinq.bitcoin.{BinaryData, MilliSatoshi}
 import org.bitcoinj.core.{Coin, TransactionOutput}
 import android.widget.{ImageButton, TextView}
-import java.util.{Collections, TimerTask}
-import language.postfixOps
-import com.lightning.walletapp.lnutils.{ExternalFunder, ExternalFunderListener, WSWrap}
-
 import scala.util.{Failure, Success, Try}
 
 
@@ -57,11 +55,6 @@ class LNStartFundActivity extends TimerActivity { me =>
     lnStartFundCancel setOnClickListener onButtonTap(whenBackPressed.run)
     lnStartFundDetails setText asString.html
 
-    val efListener = new ExternalFunderListener {
-      override def onDisconnect: Unit = whenBackPressed.run
-      override def onMessage(msg: FundMsg) = freshChan process msg
-    }
-
     class OpenListener extends ConnectionListener with ChannelListener {
       val noLossProtect = new LightningException(me getString err_ln_no_data_loss_protect)
       val peerOffline = new LightningException(me getString err_ln_peer_offline format ann.addresses.head.toString)
@@ -83,7 +76,23 @@ class LNStartFundActivity extends TimerActivity { me =>
       }
     }
 
-    def localOpenListener = new OpenListener { self =>
+    def saveChan(some: HasCommitments) = {
+      // First of all we should store this chan
+      // error here will halt all further progress
+      freshChan STORE some
+
+      // Start watching a channel funding script and save a channel
+      val fundingScript = some.commitments.commitInput.txOut.publicKeyScript
+      app.kit.wallet.addWatchedScripts(Collections singletonList fundingScript)
+
+      // Attempt to save a channel on the cloud right away
+      val refund = RefundingData(some.announce, None, some.commitments)
+      val encrypted = AES.encode(refund.toJson.toString, LNParams.cloudSecret)
+      val act = CloudAct(encrypted, Seq("key" -> LNParams.cloudId.toString), "data/put")
+      OlympusWrap tellClouds act
+    }
+
+    def localOpenListener = new OpenListener {
       override def onOperational(remotePeerCandidateNodeId: PublicKey) =
         // Remote peer has sent their Init so we ask user to provide an amount
         if (remotePeerCandidateNodeId == ann.nodeId) askLocalFundingConfirm.run
@@ -101,16 +110,10 @@ class LNStartFundActivity extends TimerActivity { me =>
           freshChan process CMDFunding(app.kit.sign(cmd.dummyRequest).tx)
 
         case (_, wait: WaitFundingDoneData, WAIT_FUNDING_SIGNED, WAIT_FUNDING_DONE) =>
-          // Preliminary negotiations are complete, we can broadcast a funding transaction
-          ConnectionManager.listeners -= self
-          freshChan.listeners -= self
-          freshChan STORE wait
+          // Preliminary negotiations are complete, save channel and broadcast a fund tx
+          saveChan(wait)
 
-          // Attempt to save a channel backup right away
-          val refund = RefundingData(wait.announce, None, wait.commitments)
-          val encrypted = AES.encode(refund.toJson.toString, LNParams.cloudSecret)
-          OlympusWrap tellClouds CloudAct(encrypted, Seq("key" -> LNParams.cloudId.toString), "data/put")
-          // Make this a fully established channel by attaching operational listeners and adding it to list
+          // Attach normal listeners and add this channel to runtime list
           freshChan.listeners = app.ChannelManager.operationalListeners
           app.ChannelManager.all +:= freshChan
 
@@ -163,26 +166,38 @@ class LNStartFundActivity extends TimerActivity { me =>
       }
     }
 
-    def remoteOpenListener(wsw: WSWrap) = new OpenListener { self =>
+    def remoteOpenListener(wsw: WSWrap) = new OpenListener {
       override def onOperational(remotePeerCandidateNodeId: PublicKey) =
-        // Remote peer has provided an Init to we reassure that Funder is there
+        // #1 peer has provided an Init so we reassure that Funder is there
         if (remotePeerCandidateNodeId == ann.nodeId) wsw send wsw.params.start
 
       override def onProcessSuccess = {
         case (_, _: InitData, started: Started) if started.start == wsw.params.start =>
-          // External funder has returned a Started which is identical to the one we have
+          // #2 funder has returned a Started which is identical to the one we have
           askExternalFundingConfirm(started).run
+
+        case (_, wait: WaitBroadcastRemoteData, sent: FundingTxBroadcasted) =>
+          // #5 we have got a funder confirmation sooner than an on-chain event
+          app.kit.blockSend(sent.tx)
       }
 
       override def onBecome = {
         case (_, WaitFundingData(_, cmd, accept), WAIT_FOR_ACCEPT, WAIT_FOR_FUNDING) =>
-          // Remote peer has accepted our proposal and we have all the data to request a funding tx
+          // #3 peer has accepted our proposal and we have all the data to request a funding tx
           val realKey = pubKeyScript(cmd.localParams.fundingPrivKey.publicKey, accept.fundingPubkey)
           wsw send PrepareFundingTx(wsw.params.userId, realKey)
 
-        case (_, wait: WaitFundingSignedRemoteData, _, WAIT_FUNDING_SIGNED) if wait.firstCommitTx.isDefined =>
-          // We have a firstCommitTx signed by remote peer at this point so it is safe to broadcast a funding
-          wsw send BroadcastFundingTx(wsw.params.userId, wait.txid.reverse)
+        case (_, wait: WaitBroadcastRemoteData, WAIT_FUNDING_SIGNED, WAIT_FUNDING_DONE) =>
+          // #4 peer has signed our first commit so we can ask funder to broadcast a tx
+          wsw send BroadcastFundingTx(wsw.params.userId, txHash = wait.txHash)
+          freshChan.listeners ++= app.ChannelManager.operationalListeners
+          app.ChannelManager.all +:= freshChan
+          saveChan(wait)
+
+        case (_, _: WaitFundingDoneData, WAIT_FUNDING_DONE, WAIT_FUNDING_DONE) =>
+          // #6 we have received a remote funding tx and may exit to ops page
+          app.TransData.value = FragWallet.REDIRECT
+          me exitTo classOf[WalletActivity]
       }
 
       private def askExternalFundingConfirm(started: Started) = UITask {
@@ -201,7 +216,12 @@ class LNStartFundActivity extends TimerActivity { me =>
       }
     }
 
-    lazy val openListener = ExternalFunder.worker match {
+    val efListener = new ExternalFunderListener {
+      override def onDisconnect: Unit = whenBackPressed.run
+      override def onMessage(msg: FundMsg) = freshChan process msg
+    }
+
+    val openListener = ExternalFunder.worker match {
       case Some(workingWsw) => remoteOpenListener(workingWsw)
       case None => localOpenListener
     }

@@ -178,7 +178,7 @@
 
     <string name="err_fund_verify_error">Can not proceed with external funding because remote verification failed</string>
     <string name="err_fund_not_verified_yet">Can not proceed with external funding because verification is not finished yet</string>
-    <string name="err_fund_could_not_reserve">Can not proceed with external funding because a requested amount could not be reserved</string>
+    <string name="err_fund_reserve_failed">Can not proceed with external funding because a requested amount could not be reserved</string>
     <string name="err_fund_reserve_expired">Can not proceed with external funding because your reserved amount hit an expiry deadline</string>
     <string name="err_fund_funding_pending">Can not proceed with external funding because your reserved amount is still being allocated</string>
     <string name="err_fund_funding_exists">Can not proceed with external funding because another reserved amount of yours exists already</string>
@@ -186,7 +186,8 @@
     <string name="err_fund_internal_error">Can not proceed with external funding because a remote internal error occurred</string>
     <string name="err_fund_disconnect">Disconnected from external funder</string>
 
-    <string name="ex_fund_info"><![CDATA[<small>connected to <i>%1$s</i></small><br>expires at <strong>%2$s</strong><br>funding amount %3$s<br>funding fee %4$s]]></string>
+    <string name="ex_fund_connecting"><![CDATA[<small>connecting to <i>%1$s</i></small><br>expires at <strong>%2$s</strong><br>funding amount %3$s<br>funding fee %4$s]]></string>
+    <string name="ex_fund_connected"><![CDATA[<small>connected to <i>%1$s</i></small><br>expires at <strong>%2$s</strong><br>funding amount %3$s<br>funding fee %4$s]]></string>
     <string name="ex_fund_accept"><![CDATA[<small>funding from <i>%1$s</i></small><br>capacity %2$s<br>funding fee %3$s]]></string>
 
     <!-- SPECIFIC TO LIGHTNING NETWORK -->

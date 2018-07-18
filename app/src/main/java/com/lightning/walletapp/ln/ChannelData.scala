@@ -48,16 +48,27 @@ case class WaitFundingData(announce: NodeAnnouncement, cmd: CMDOpenChannel, acce
 // Funding tx may arrive locally or from external funder
 case class WaitFundingSignedCore(localParams: LocalParams, channelId: BinaryData,
                                  remoteParams: AcceptChannel, localSpec: CommitmentSpec,
-                                 localCommitTx: CommitTx, remoteCommit: RemoteCommit)
+                                 localCommitTx: CommitTx, remoteCommit: RemoteCommit) {
 
-case class WaitFundingSignedData(announce: NodeAnnouncement, core: WaitFundingSignedCore,
-                                 fundingTx: Transaction) extends ChannelData
+  def makeCommitments(signedLocalCommitTx: CommitTx) =
+    Commitments(localParams, remoteParams, LocalCommit(index = 0L, localSpec, Nil, signedLocalCommitTx), remoteCommit,
+      localChanges = Changes(Vector.empty, Vector.empty, Vector.empty), remoteChanges = Changes(Vector.empty, Vector.empty, Vector.empty),
+      localNextHtlcId = 0L, remoteNextHtlcId = 0L, remoteNextCommitInfo = Right(Tools.randomPrivKey.toPoint), localCommitTx.input,
+      remotePerCommitmentSecrets = ShaHashesWithIndex(Map.empty, None), channelId)
+}
 
-case class WaitFundingSignedRemoteData(announce: NodeAnnouncement,
-                                       core: WaitFundingSignedCore, firstCommitTx: Option[CommitTx],
-                                       txid: BinaryData, premature: Boolean = false) extends ChannelData
+case class WaitFundingSignedRemoteData(announce: NodeAnnouncement, core: WaitFundingSignedCore, txHash: BinaryData) extends ChannelData {
+  def makeWaitBroadcastRemoteData(signedCommit: CommitTx) = WaitBroadcastRemoteData(announce, core, txHash, core makeCommitments signedCommit)
+}
+
+case class WaitFundingSignedData(announce: NodeAnnouncement, core: WaitFundingSignedCore, fundingTx: Transaction) extends ChannelData {
+  def makeWaitFundingDoneData(signedCommit: CommitTx) = WaitFundingDoneData(announce, None, None, fundingTx, core makeCommitments signedCommit)
+}
 
 // All the data below will be stored
+case class WaitBroadcastRemoteData(announce: NodeAnnouncement, core: WaitFundingSignedCore, txHash: BinaryData,
+                                 commitments: Commitments, fail: Option[Fail] = None) extends HasCommitments
+
 case class WaitFundingDoneData(announce: NodeAnnouncement, our: Option[FundingLocked],
                                their: Option[FundingLocked], fundingTx: Transaction,
                                commitments: Commitments) extends HasCommitments

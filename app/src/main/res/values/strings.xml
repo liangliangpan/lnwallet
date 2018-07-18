@@ -182,7 +182,8 @@
     <string name="err_fund_internal_error">Can not proceed with external funding because a remote internal error occurred</string>
     <string name="err_fund_disconnect">Disconnected from external funder</string>
 
-    <string name="ex_fund_info"><![CDATA[<i>%1$s</i><br>expires at <strong>%2$s</strong><br>funding amount %3$s<br>funding fee %4$s]]></string>
+    <string name="ex_fund_connecting"><![CDATA[<small>connecting to <i>%1$s</i></small><br>expires at <strong>%2$s</strong><br>funding amount %3$s<br>funding fee %4$s]]></string>
+    <string name="ex_fund_connected"><![CDATA[<small>connected to <i>%1$s</i></small><br>expires at <strong>%2$s</strong><br>funding amount %3$s<br>funding fee %4$s]]></string>
     <string name="ex_fund_accept"><![CDATA[<small>funding from <i>%1$s</i></small><br>capacity %2$s<br>funding fee %3$s]]></string>
 
     <!-- SPECIFIC TO LIGHTNING NETWORK -->

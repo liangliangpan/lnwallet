@@ -31,10 +31,10 @@ import android.os.Bundle
 
 import android.content.DialogInterface.{BUTTON_NEUTRAL, BUTTON_POSITIVE, BUTTON_NEGATIVE}
 import com.lightning.walletapp.lnutils.IconGetter.{scrWidth, maxDialog}
-import org.bitcoinj.wallet.{DefaultCoinSelector, SendRequest, Wallet}
 import org.bitcoinj.wallet.SendRequest.{emptyWallet, to}
 import com.lightning.walletapp.ln.Tools.{none, wrap}
 import R.id.{typeCNY, typeEUR, typeJPY, typeUSD}
+import org.bitcoinj.wallet.{SendRequest, Wallet}
 import scala.util.{Failure, Success, Try}
 import android.app.{AlertDialog, Dialog}
 import android.content.{Context, Intent}
@@ -329,15 +329,11 @@ trait BlocksListener extends PeerDataEventListener {
   def onPreMessageReceived(peer: Peer, message: Message) = message
 }
 
-abstract class TxTracker
-extends WalletCoinsSentEventListener
-with TransactionConfidenceEventListener {
+trait TxTracker extends WalletCoinsSentEventListener with WalletCoinsReceivedEventListener with TransactionConfidenceEventListener {
+  def onTransactionConfidenceChanged(w: Wallet, txj: Transaction) = if (txj.getConfidence.getDepthInBlocks == minDepth) txConfirmed(txj)
   def txConfirmed(txj: Transaction): Unit = none
-  def onTransactionConfidenceChanged(wallet: Wallet, txj: Transaction) =
-    if (txj.getConfidence.getDepthInBlocks == minDepth) txConfirmed(txj)
 }
 
-class MinDepthReachedCoinSelector extends DefaultCoinSelector {
-  override def shouldSelect(txj: Transaction) = if (null == txj) true
-    else txj.getConfidence.getDepthInBlocks >= minDepth
+class MinDepthReachedCoinSelector extends org.bitcoinj.wallet.DefaultCoinSelector {
+  override def shouldSelect(txj: Transaction) = if (null == txj) true else txj.getConfidence.getDepthInBlocks >= minDepth
 }

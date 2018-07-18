@@ -14,6 +14,7 @@ import com.lightning.walletapp.ln.Channel._
 import com.lightning.walletapp.ln.LNParams._
 import com.lightning.walletapp.ln.PaymentInfo._
 import com.lightning.walletapp.lnutils.JsonHttpUtils._
+import com.google.common.util.concurrent.Service.State._
 import com.lightning.walletapp.lnutils.ImplicitJsonFormats._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
 
@@ -22,7 +23,6 @@ import org.bitcoinj.wallet.{SendRequest, Wallet}
 import fr.acinq.bitcoin.Crypto.{Point, PublicKey}
 import fr.acinq.bitcoin.{Crypto, MilliSatoshi, Satoshi}
 import android.content.{ClipData, ClipboardManager, Context}
-import com.google.common.util.concurrent.Service.State.{RUNNING, STARTING}
 import com.lightning.walletapp.ln.wire.LightningMessageCodecs.RGB
 import com.lightning.walletapp.lnutils.olympus.OlympusWrap
 import com.lightning.walletapp.lnutils.olympus.CloudAct
@@ -167,7 +167,9 @@ class WalletApp extends Application { me =>
 
     val chainEventsListener = new TxTracker with BlocksListener {
       override def txConfirmed(txj: Transaction) = for (c <- notClosing) c process CMDConfirmed(txj)
-      override def onBlocksDownloaded(p: Peer, b: Block, fb: FilteredBlock, left: Int) = onChainDownload(left)
+      def onCoinsSent(w: Wallet, txj: Transaction, a: Coin, b: Coin) = if (a isGreaterThan b) onChainTx(txj)
+      def onCoinsReceived(w: Wallet, txj: Transaction, a: Coin, b: Coin) = if (b isGreaterThan a) onChainTx(txj)
+      def onBlocksDownloaded(p: Peer, b: Block, fb: FilteredBlock, left: Int) = onChainDownload(left)
       override def onChainDownloadStarted(peer: Peer, left: Int) = onChainDownload(left)
 
       def onChainDownload(blocksLeft: Int) = {
@@ -185,13 +187,10 @@ class WalletApp extends Application { me =>
         }
       }
 
-      def onCoinsSent(w: Wallet, txj: Transaction, a: Coin, b: Coin) = {
-        // Always attempt to extract a payment preimage by simply assuming
-        // any incoming tx may contain it, also send all txs to chans
-
-        val cmdSpent = CMDSpent(txj)
-        for (c <- all) c process cmdSpent
-        bag.extractPreimage(cmdSpent.tx)
+      def onChainTx(txj: Transaction) = {
+        val cmdOnChainSpent = CMDSpent(txj)
+        for (c <- all) c process cmdOnChainSpent
+        bag.extractPreimage(cmdOnChainSpent.tx)
       }
     }
 
@@ -323,6 +322,7 @@ class WalletApp extends Application { me =>
 
     def setupAndStartDownload = {
       wallet.addTransactionConfidenceEventListener(ChannelManager.chainEventsListener)
+      wallet.addCoinsReceivedEventListener(ChannelManager.chainEventsListener)
       wallet.addCoinsSentEventListener(ChannelManager.chainEventsListener)
       wallet.autosaveToFile(walletFile, 400, MILLISECONDS, null)
       wallet.setCoinSelector(new MinDepthReachedCoinSelector)

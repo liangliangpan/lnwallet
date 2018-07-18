@@ -57,15 +57,8 @@ object LocalBroadcaster extends Broadcaster {
   }
 
   override def onBecome = {
-    case (_, wait: WaitFundingDoneData, _, _) =>
-      // Repeatedly send a funding tx in case it was unsuccessful before
-      val fundingScript = wait.commitments.commitInput.txOut.publicKeyScript
-      app.kit.wallet.addWatchedScripts(Collections singletonList fundingScript)
-      app.kit.blockSend(wait.fundingTx)
-
-    case (chan, norm: NormalData, OFFLINE, OPEN) =>
-      // Updated feerates may arrive sooner then channel gets open
-      // so inform channel about updated fees once it gets open
-      chan process CMDFeerate(perKwThreeSat)
+    // Repeatedly resend a funding tx, update feerate on becoming open
+    case (_, wait: WaitFundingDoneData, _, _) => app.kit.blockSend(wait.fundingTx)
+    case (chan, _: NormalData, OFFLINE, OPEN) => chan process CMDFeerate(perKwThreeSat)
   }
 }

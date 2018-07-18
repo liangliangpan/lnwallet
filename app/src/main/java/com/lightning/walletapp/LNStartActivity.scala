@@ -97,21 +97,20 @@ class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
       host goTo classOf[LNStartFundActivity]
     }
 
-    def exfunderInfo(wrk: WSWrap, color: Int) = host UITask {
+    def funderInfo(wrk: WSWrap, color: Int, text: Int) = host UITask {
       val humanAmountSum = denom withSign wrk.params.start.fundingAmount
       val humanExpiry = me time new Date(wrk.params.expiry)
       val humanFeeSum = denom withSign wrk.params.fee
-      val base = host getString ex_fund_info
 
-      val info = base.format(wrk.params.start.host, humanExpiry, humanAmountSum, humanFeeSum)
       externalFundWrap setBackgroundColor getResources.getColor(color, null)
-      externalFundInfo setText info.html
+      externalFundInfo setText host.getString(text).format(wrk.params.start.host,
+        humanExpiry, humanAmountSum, humanFeeSum).html
     }
 
     spawnExternalFunder = started => {
       val freshWSWrap = WSWrap(started)
       val disconnect = host.onButtonTap(ExternalFunder disconnectWSWrap freshWSWrap)
-      exfunderInfo(freshWSWrap, color = R.color.material_blue_grey_800).run
+      funderInfo(freshWSWrap, R.color.material_blue_grey_800, ex_fund_connecting).run
       externalFundCancel setOnClickListener disconnect
       externalFundWrap setVisibility View.VISIBLE
 
@@ -127,8 +126,8 @@ class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
 
       freshWSWrap.listeners += new ExternalFunderListener {
         override def onDisconnect = host.UITask(externalFundWrap setVisibility View.GONE).run
-        override def onOffline = exfunderInfo(freshWSWrap, R.color.material_blue_grey_800).run
-        override def onMessage(msg: FundMsg) = exfunderInfo(freshWSWrap, R.color.ln).run
+        override def onOffline = funderInfo(freshWSWrap, R.color.material_blue_grey_800, ex_fund_connecting).run
+        override def onMessage(msg: FundMsg) = funderInfo(freshWSWrap, R.color.ln, ex_fund_connected).run
       }
 
       freshWSWrap.listeners += new ExternalFunderListener {
@@ -159,6 +158,8 @@ class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
         host.UITask(adapter.notifyDataSetChanged).run
       }
     }
+
+    app.TransData.value = Started(Start("user-2", Satoshi(600000L), "10.0.2.2", 9001), System.currentTimeMillis + 3600000L, Satoshi(2000L))
 
     FragLNStart.fragment = me
     host.setSupportActionBar(toolbar)
