@@ -3,14 +3,14 @@ package com.lightning.walletapp.lnutils
 import collection.JavaConverters._
 import com.lightning.walletapp.ln._
 import com.lightning.walletapp.ln.Channel._
+import com.lightning.walletapp.ln.wire.FundMsg._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
 import org.bitcoinj.core.TransactionConfidence.ConfidenceType._
-import com.lightning.walletapp.ln.wire.ChannelReestablish
+import com.lightning.walletapp.ln.wire.{ChannelReestablish, Fail}
 import com.lightning.walletapp.ln.Tools.none
 import com.lightning.walletapp.Utils.app
 import org.bitcoinj.core.Sha256Hash
 import fr.acinq.bitcoin.BinaryData
-import java.util.Collections
 
 
 object LocalBroadcaster extends Broadcaster {
@@ -30,7 +30,7 @@ object LocalBroadcaster extends Broadcaster {
 
   def getBlockHashStrings(txid: BinaryData) = for {
     // Given a txid return a hash of containing blocks
-    // this may return multiple block hashes
+    // note that this may return many block hashes
 
     txj <- getTx(txid).toVector
     hashes <- Option(txj.getAppearsInHashes).toVector
@@ -44,10 +44,21 @@ object LocalBroadcaster extends Broadcaster {
       val toSend = close.mutualClose ++ close.localCommit.map(_.commitTx) ++ tier12Publishable
       for (tx <- toSend) try app.kit blockSend tx catch none
 
+    case (chan, remote: WaitBroadcastRemoteData, _: ChannelReestablish) =>
+      // Check if funding takes too much time or whether it's dead if present in a wallet
+      val isOutdated = System.currentTimeMillis - remote.commitments.startedAt > 14400 * 1000L
+      if (isOutdated && remote.fail.isEmpty) chan process Fail(FAIL_PUBLISH_ERROR, "Expired funding")
+
+      for {
+        txj <- getTx(remote.txHash.reverse)
+        _ \ isDead = getStatus(remote.txHash.reverse)
+        deadFail = Fail(FAIL_PUBLISH_ERROR, "Dead funding")
+        message = if (isDead) deadFail else CMDSpent(txj)
+      } chan process message
+
     case (chan, wait: WaitFundingDoneData, _: ChannelReestablish) if wait.our.isEmpty =>
       // CMDConfirmed may be sent to an offline channel and there will be no reaction
       // so always double check a funding state here as a failsafe measure
-      // but only if we don't have our FundingLocked defined already
 
       for {
         txj <- getTx(wait.fundingTx.txid)

@@ -327,8 +327,6 @@ class WalletApp extends Application { me =>
       wallet.autosaveToFile(walletFile, 400, MILLISECONDS, null)
       wallet.setCoinSelector(new MinDepthReachedCoinSelector)
 
-//      for (c <- ChannelManager.all) db.change(ChannelTable.killSql, c(_.channelId).get)
-
       try {
         Notificator.removeResyncNotification
         val shouldReSchedule = ChannelManager.notClosingOrRefunding exists hasReceivedPayments

@@ -108,8 +108,8 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
         }
 
 
-      // Funder was not able to broadcast a funding tx, record their fail
-      case (wait: WaitBroadcastRemoteData, fail: Fail, WAIT_FUNDING_DONE) =>
+      // Funder was not able to broadcast a funding tx, record their fail locally
+      case (wait: WaitBroadcastRemoteData, fail: Fail, OFFLINE | WAIT_FUNDING_DONE) =>
         val d1 = me STORE wait.copy(fail = Some apply fail)
         me UPDATA d1
 
@@ -377,11 +377,10 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
         doProcess(CMDHTLCProcess)
 
 
+      // We're exiting a sync state while funding tx is still not provided
       case (remote: WaitBroadcastRemoteData, cr: ChannelReestablish, OFFLINE) =>
-        val tooLong = Fail(FundMsg.FAIL_PUBLISH_ERROR, "Commit tx is taking too long")
-        val isOutdated = System.currentTimeMillis - remote.commitments.startedAt > 7200 * 1000L
-        if (isOutdated && remote.fail.isEmpty) me UPDATA remote.copy(fail = Some apply tooLong)
-        else BECOME(remote, WAIT_FUNDING_DONE)
+        // Need to check whether a funding is present in a listener
+        BECOME(remote, WAIT_FUNDING_DONE)
 
 
       // We're exiting a sync state while waiting for their FundingLocked

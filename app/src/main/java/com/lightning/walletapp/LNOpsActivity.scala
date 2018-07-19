@@ -148,6 +148,7 @@ class ChanDetailsFrag extends Fragment with HumanTimeDisplay { me =>
           val cId = cs.channelId.toString
           val w = LNParams.nodePublicKey.toString
           val peer = chan.data.announce.nodeId.toString
+          println(cId)
           s"Wallet: $w\n\nPeer: $peer\n\nChannel: $cId"
         }
 

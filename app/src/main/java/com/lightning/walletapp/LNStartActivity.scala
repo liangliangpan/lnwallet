@@ -160,8 +160,6 @@ class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
       }
     }
 
-    app.TransData.value = Started(Start("user-2", Satoshi(600000L), "10.0.2.2", 9001), System.currentTimeMillis + 3600000L, Satoshi(2000L))
-
     FragLNStart.fragment = me
     host.setSupportActionBar(toolbar)
     host.getSupportActionBar.setTitle(action_ln_open)
