@@ -66,7 +66,7 @@ object FragLNStart {
 }
 
 class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
-  override def onDestroy = wrap(super.onDestroy)(ExternalFunder.worker foreach ExternalFunder.disconnectWSWrap)
+  override def onDestroy = wrap(super.onDestroy) { for (wsw <- ExternalFunder.worker) ExternalFunder disconnectWSWrap wsw }
   override def onCreateView(inf: LayoutInflater, vg: ViewGroup, bn: Bundle) = inf.inflate(R.layout.frag_ln_start, vg, false)
   lazy val host: LNStartActivity = me.getActivity.asInstanceOf[LNStartActivity]
 
@@ -131,15 +131,16 @@ class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
       }
 
       freshWSWrap.listeners += new ExternalFunderListener {
+        // First we disconnect on fail, then react to that event
+        override def onMessage(message: FundMsg) = message match {
+          case _: Fail => ExternalFunder disconnectWSWrap freshWSWrap
+          case _ => Tools log s"Websocket got $message"
+        }
+
         override def onDisconnect = freshWSWrap.lastMessage match {
           case fail: Fail if err2String contains fail.code => host onFail getString(err2String apply fail.code)
           case unexpectedErrorCode: Fail => host onFail getString(err2String apply FAIL_INTERNAL_ERROR)
           case _ => host.UITask(app toast err_fund_disconnect).run
-        }
-
-        override def onMessage(message: FundMsg) = message match {
-          case _: Fail => ExternalFunder disconnectWSWrap freshWSWrap
-          case _ => Tools log s"Websocket got $message"
         }
       }
 

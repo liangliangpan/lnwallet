@@ -107,15 +107,17 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
           case _ => BECOME(wait, CLOSING)
         }
 
-      // Funder was not able to broadcast a funding tx, record this
+
+      // Funder was not able to broadcast a funding tx, record their fail
       case (wait: WaitBroadcastRemoteData, fail: Fail, WAIT_FUNDING_DONE) =>
-        val d1 = wait.copy(fail = Some apply fail)
-        me UPDATA STORE(d1)
+        val d1 = me STORE wait.copy(fail = Some apply fail)
+        me UPDATA d1
 
 
       // We have asked an external funder to broadcast a funding tx and got an onchain event
       case (wait: WaitBroadcastRemoteData, CMDSpent(fundTx), OFFLINE | WAIT_FUNDING_DONE) if wait.txHash == fundTx.hash =>
-        me UPDATA WaitFundingDoneData(wait.announce, our = None, their = None, fundingTx = fundTx, wait.commitments)
+        val d1 = me STORE WaitFundingDoneData(wait.announce, our = None, their = None, fundingTx = fundTx, wait.commitments)
+        me UPDATA d1
 
 
       // FUNDING TX IS BROADCASTED AT THIS POINT
@@ -377,7 +379,7 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
 
       case (remote: WaitBroadcastRemoteData, cr: ChannelReestablish, OFFLINE) =>
         val tooLong = Fail(FundMsg.FAIL_PUBLISH_ERROR, "Commit tx is taking too long")
-        val isOutdated = System.currentTimeMillis - remote.commitments.startedAt > 86400 * 1000L
+        val isOutdated = System.currentTimeMillis - remote.commitments.startedAt > 7200 * 1000L
         if (isOutdated && remote.fail.isEmpty) me UPDATA remote.copy(fail = Some apply tooLong)
         else BECOME(remote, WAIT_FUNDING_DONE)
 

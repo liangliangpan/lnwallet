@@ -571,22 +571,23 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
       } setSum tryMSat
     }
 
-  def sendBtcPopup(addr: Address)(and: String => Unit): RateManager = {
+  def sendBtcPopup(addr: Address)(and: Transaction => Unit): RateManager = {
     val form = host.getLayoutInflater.inflate(R.layout.frag_input_send_btc, null, false)
     val hint = app.getString(amount_hint_can_send).format(denom withSign app.kit.conf1Balance)
     val addressData = form.findViewById(R.id.addressData).asInstanceOf[TextView]
     val rateManager = new RateManager(hint, form)
 
     def next(ms: MilliSatoshi) = new TxProcessor {
-      def futureProcess(unsignedRequest: SendRequest) =
-        and(app.kit blockSend app.kit.sign(unsignedRequest).tx)
+      def futureProcess(unsignedRequest: SendRequest) = {
+        val signedSpendTx = app.kit.sign(unsignedRequest).tx
+        and(app.kit blockSend signedSpendTx)
+      }
 
       val pay = AddrData(ms, addr)
+      def retry = sendBtcPopup(addr)(and)
       def onTxFail(sendingError: Throwable) = {
-        def retryBtcPopup = sendBtcPopup(addr)(and)
         val bld = baseBuilder(messageWhenMakingTx(sendingError), null)
-        mkCheckForm(alert => rm(alert)(retryBtcPopup), none, bld,
-          dialog_retry, dialog_cancel)
+        mkCheckForm(alert => rm(alert)(retry), none, bld, dialog_retry, dialog_cancel)
       }
     }
 

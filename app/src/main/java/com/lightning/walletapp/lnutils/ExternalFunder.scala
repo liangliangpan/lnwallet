@@ -22,13 +22,13 @@ object ExternalFunder {
     worker = Some(newWSWrap)
   }
 
-  def disconnectWSWrap(oldWorker: WSWrap) =
-    for (wsw <- worker if wsw.params == oldWorker.params) {
-      // Only disconnect if old worker is also a current worker
-      for (lst <- wsw.listeners) lst.onDisconnect
-      wsw.listeners = Set.empty
-      wsw.ws.clearListeners
-      wsw.ws.disconnect
+  def disconnectWSWrap(oldWorker: WSWrap, inform: Boolean = true) =
+    for (currentWrap <- worker if currentWrap.params == oldWorker.params) {
+      // Only disconnect if old websocket wrapper is also a current wrapper
+      if (inform) for (lst <- currentWrap.listeners) lst.onDisconnect
+      currentWrap.listeners = Set.empty
+      currentWrap.ws.clearListeners
+      currentWrap.ws.disconnect
       worker = None
     }
 }
