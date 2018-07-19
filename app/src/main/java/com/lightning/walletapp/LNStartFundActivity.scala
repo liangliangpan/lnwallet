@@ -84,8 +84,6 @@ class LNStartFundActivity extends TimerActivity { me =>
       // Start watching a channel funding script and save a channel
       val fundingScript = some.commitments.commitInput.txOut.publicKeyScript
       app.kit.wallet.addWatchedScripts(Collections singletonList fundingScript)
-      freshChan.listeners ++= app.ChannelManager.operationalListeners
-      app.ChannelManager.all +:= freshChan
 
       // Attempt to save a channel on the cloud right away
       val refund = RefundingData(some.announce, None, some.commitments)
@@ -113,6 +111,8 @@ class LNStartFundActivity extends TimerActivity { me =>
 
         case (_, wait: WaitFundingDoneData, WAIT_FUNDING_SIGNED, WAIT_FUNDING_DONE) =>
           // Preliminary negotiations are complete, save channel and broadcast a fund tx
+          freshChan.listeners = app.ChannelManager.operationalListeners
+          app.ChannelManager.all +:= freshChan
           saveChan(wait)
 
           // Broadcast a funding transaction
@@ -188,11 +188,14 @@ class LNStartFundActivity extends TimerActivity { me =>
 
         case (_, wait: WaitBroadcastRemoteData, WAIT_FUNDING_SIGNED, WAIT_FUNDING_DONE) =>
           // #4 peer has signed our first commit so we can ask funder to broadcast a tx
-          wsw send BroadcastFundingTx(wsw.params.userId, wait.txHash)
+          wsw send BroadcastFundingTx(wsw.params.userId, txHash = wait.txHash)
+          freshChan.listeners ++= app.ChannelManager.operationalListeners
+          app.ChannelManager.all +:= freshChan
           saveChan(wait)
 
         case (_, _: WaitFundingDoneData, WAIT_FUNDING_DONE, WAIT_FUNDING_DONE) =>
           // #6 we have received a remote funding tx and may exit to ops page
+          freshChan.listeners = app.ChannelManager.operationalListeners
           ExternalFunder.disconnectWSWrap(wsw, inform = false)
           app.TransData.value = FragWallet.REDIRECT
           me exitTo classOf[WalletActivity]
