@@ -52,7 +52,7 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
     Tuple3(data, change, state) match {
       case (InitData(announce), cmd: CMDOpenChannel, WAIT_FOR_INIT) =>
         BECOME(WaitAcceptData(announce, cmd), WAIT_FOR_ACCEPT) SEND OpenChannel(LNParams.chainHash, cmd.tempChanId,
-          cmd.batch.fundingAmount.value, cmd.pushMsat, cmd.localParams.dustLimit.amount, cmd.localParams.maxHtlcValueInFlightMsat,
+          cmd.batch.fundingAmountSat, cmd.pushMsat, cmd.localParams.dustLimit.amount, cmd.localParams.maxHtlcValueInFlightMsat,
           cmd.localParams.channelReserveSat, LNParams.minHtlcValue.amount, cmd.initialFeeratePerKw, cmd.localParams.toSelfDelay,
           cmd.localParams.maxAcceptedHtlcs, cmd.localParams.fundingPrivKey.publicKey, cmd.localParams.revocationBasepoint,
           cmd.localParams.paymentBasepoint, cmd.localParams.delayedPaymentBasepoint, cmd.localParams.htlcBasepoint,
@@ -61,7 +61,7 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
 
       case (wait @ WaitAcceptData(announce, cmd), accept: AcceptChannel, WAIT_FOR_ACCEPT) if accept.temporaryChannelId == cmd.tempChanId =>
         if (accept.dustLimitSatoshis > cmd.localParams.channelReserveSat) throw new LightningException("Our channel reserve is less than their dust")
-        if (accept.channelReserveSatoshis > cmd.batch.fundingAmount.value / 10) throw new LightningException("Their proposed reserve is too high")
+        if (accept.channelReserveSatoshis > cmd.batch.fundingAmountSat / 10) throw new LightningException("Their proposed reserve is too high")
         if (UInt64(10000L) > accept.maxHtlcValueInFlightMsat) throw new LightningException("Their maxHtlcValueInFlightMsat is too low")
         if (accept.dustLimitSatoshis < 546L) throw new LightningException("Their on-chain dust limit is too low")
         if (accept.maxAcceptedHtlcs > 483) throw new LightningException("They can accept too many payments")
@@ -77,7 +77,7 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
 
       case (WaitFundingData(announce, cmd, accept), CMDFunding(fundTx), WAIT_FOR_FUNDING) =>
         // They have accepted our proposal, let them sign a first commit so we can broadcast a funding later
-        if (fundTx.txOut(cmd.batch.fundOutIdx).amount.amount != cmd.batch.fundingAmount.value) throw new LightningException
+        if (fundTx.txOut(cmd.batch.fundOutIdx).amount.amount != cmd.batch.fundingAmountSat) throw new LightningException
         val core \ fundingCreatedMessage = signFunding(cmd, accept, txHash = fundTx.hash, outIndex = cmd.batch.fundOutIdx)
         BECOME(WaitFundingSignedData(announce, core, fundTx), WAIT_FUNDING_SIGNED) SEND fundingCreatedMessage
 

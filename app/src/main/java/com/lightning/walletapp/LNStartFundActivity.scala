@@ -3,8 +3,6 @@ package com.lightning.walletapp
 import spray.json._
 import com.lightning.walletapp.ln._
 import com.lightning.walletapp.Utils._
-
-import scala.collection.JavaConverters._
 import com.lightning.walletapp.ln.wire._
 import com.lightning.walletapp.lnutils._
 import com.lightning.walletapp.R.string._
@@ -22,13 +20,12 @@ import fr.acinq.bitcoin.Crypto.PublicKey
 import org.bitcoinj.script.ScriptBuilder
 import org.bitcoinj.wallet.SendRequest
 import android.app.AlertDialog
+import org.bitcoinj.core.Batch
 import java.util.Collections
-
 import android.os.Bundle
-import fr.acinq.bitcoin.{BinaryData, MilliSatoshi}
-import org.bitcoinj.core.{Batch, Coin, TransactionOutput}
-import android.widget.{ImageButton, TextView}
 
+import fr.acinq.bitcoin.{BinaryData, MilliSatoshi}
+import android.widget.{ImageButton, TextView}
 import scala.util.{Failure, Success, Try}
 
 
@@ -133,7 +130,7 @@ class LNStartFundActivity extends TimerActivity { me =>
 
           def futureProcess(unsignedRequest: SendRequest) = {
             val batch = Batch(unsignedRequest, dummyScript, null)
-            val theirUnspendableReserveSat = batch.fundingAmount.value / LNParams.theirReserveToFundingRatio
+            val theirUnspendableReserveSat = batch.fundingAmountSat / LNParams.theirReserveToFundingRatio
             val finalPubKeyScript: BinaryData = ScriptBuilder.createOutputScript(app.kit.currentAddress).getProgram
             val localParams = LNParams.makeLocalParams(theirUnspendableReserveSat, finalPubKeyScript, System.currentTimeMillis)
             freshChan process CMDOpenChannel(localParams, random getBytes 32, LNParams.broadcaster.perKwThreeSat, batch, 0L)
@@ -141,7 +138,7 @@ class LNStartFundActivity extends TimerActivity { me =>
 
           def onTxFail(fundingError: Throwable) = {
             val bld = baseBuilder(title = messageWhenMakingTx(fundingError), null)
-            mkCheckForm(alert => rm(alert)(finish), none, bld, dialog_ok, dialog_cancel)
+            mkCheckForm(alert => rm(alert)(finish), none, bld, dialog_ok, -1)
           }
         }
 

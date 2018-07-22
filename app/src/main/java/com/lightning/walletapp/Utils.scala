@@ -118,7 +118,7 @@ trait TimerActivity extends AppCompatActivity { me =>
     val negAct = me onButtonTap rm(alert)(no)
     try clickableTextField(alert findViewById android.R.id.message) catch none
     if (-1 != noResource) alert getButton BUTTON_NEGATIVE setOnClickListener negAct
-    if (-1 != noResource) alert getButton BUTTON_POSITIVE setOnClickListener posAct
+    if (-1 != okResource) alert getButton BUTTON_POSITIVE setOnClickListener posAct
     alert
   }
 

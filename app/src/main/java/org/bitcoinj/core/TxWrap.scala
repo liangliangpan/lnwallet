@@ -19,14 +19,14 @@ import fr.acinq.bitcoin.BinaryData
 
 case class Batch(unsigned: SendRequest, dummyScript: BinaryData, pr: PaymentRequest) {
   lazy val fundOutIdx = new PubKeyScriptIndexFinder(unsigned.tx).findPubKeyScriptIndex(dummyScript, None)
-  lazy val fundingAmount = unsigned.tx.getOutput(fundOutIdx).getValue
+  lazy val fundingAmountSat = unsigned.tx.getOutput(fundOutIdx).getValue.value
 
   def replaceDummyOnce(realScript: BinaryData) = {
-    val realOut = new TransactionOutput(app.params, null, fundingAmount, realScript.getProgram)
+    val realOut = new TransactionOutput(app.params, null, Coin valueOf fundingAmountSat, realScript)
     val withReplacedDummy = unsigned.tx.getOutputs.asScala.patch(fundOutIdx, List(realOut), 1)
 
     unsigned.tx.clearOutputs
-    // First remove all existing outs, then add updated
+    // First remove all existing outs, then fill in updated
     for (out <- withReplacedDummy) unsigned.tx addOutput out
     // This mutates an inner tx, only use once!
     unsigned

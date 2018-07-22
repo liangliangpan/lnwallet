@@ -12,11 +12,8 @@ import com.lightning.walletapp.ln.CommitmentSpec.{HtlcAndFail, HtlcAndFulfill}
 import com.lightning.walletapp.ln.Helpers.Closing.{SuccessAndClaim, TimeoutAndClaim}
 import com.lightning.walletapp.ln.crypto.{Generators, ShaChain, ShaHashesWithIndex}
 import com.lightning.walletapp.ln.wire.LightningMessageCodecs.LNMessageVector
-import org.bitcoinj.wallet.SendRequest
-import fr.acinq.eclair.UInt64
 import org.bitcoinj.core.Batch
-
-import language.postfixOps
+import fr.acinq.eclair.UInt64
 
 
 sealed trait Command
@@ -32,7 +29,8 @@ case object CMDOffline extends Command
 case object CMDOnline extends Command
 
 case class CMDOpenChannel(localParams: LocalParams, tempChanId: BinaryData,
-                          initialFeeratePerKw: Long, batch: Batch, pushMsat: Long) extends Command
+                          initialFeeratePerKw: Long, batch: Batch,
+                          pushMsat: Long) extends Command
 
 case class CMDFailMalformedHtlc(id: Long, onionHash: BinaryData, code: Int) extends Command
 case class CMDFulfillHtlc(id: Long, preimage: BinaryData) extends Command
