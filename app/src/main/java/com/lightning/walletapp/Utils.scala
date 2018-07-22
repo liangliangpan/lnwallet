@@ -329,11 +329,20 @@ trait BlocksListener extends PeerDataEventListener {
   def onPreMessageReceived(peer: Peer, message: Message) = message
 }
 
-trait TxTracker extends WalletCoinsSentEventListener with WalletCoinsReceivedEventListener with TransactionConfidenceEventListener {
-  def onTransactionConfidenceChanged(w: Wallet, txj: Transaction) = if (txj.getConfidence.getDepthInBlocks == minDepth) txConfirmed(txj)
+trait TxTracker
+extends WalletCoinsSentEventListener
+with WalletCoinsReceivedEventListener
+with TransactionConfidenceEventListener {
+
   def txConfirmed(txj: Transaction): Unit = none
+  def onTransactionConfidenceChanged(w: Wallet, txj: Transaction) =
+    if (txj.getConfidence.getDepthInBlocks == minDepth) txConfirmed(txj)
 }
 
-class MinDepthReachedCoinSelector extends org.bitcoinj.wallet.DefaultCoinSelector {
-  override def shouldSelect(txj: Transaction) = if (null == txj) true else txj.getConfidence.getDepthInBlocks >= minDepth
+class MinDepthReachedCoinSelector
+extends org.bitcoinj.wallet.DefaultCoinSelector {
+
+  override def shouldSelect(txj: Transaction): Boolean =
+    if (null != txj) txj.getConfidence.getDepthInBlocks >= minDepth
+    else true
 }

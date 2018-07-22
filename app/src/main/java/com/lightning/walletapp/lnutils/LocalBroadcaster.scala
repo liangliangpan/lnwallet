@@ -46,15 +46,8 @@ object LocalBroadcaster extends Broadcaster {
 
     case (chan, remote: WaitBroadcastRemoteData, _: ChannelReestablish) =>
       // Check if funding takes too much time or whether it's dead if present in a wallet
-      val isOutdated = System.currentTimeMillis - remote.commitments.startedAt > 14400 * 1000L
+      val isOutdated = System.currentTimeMillis - remote.commitments.startedAt > 4 * 3600 * 1000L
       if (isOutdated && remote.fail.isEmpty) chan process Fail(FAIL_PUBLISH_ERROR, "Expired funding")
-
-      for {
-        txj <- getTx(remote.txHash.reverse)
-        _ \ isDead = getStatus(remote.txHash.reverse)
-        deadFail = Fail(FAIL_PUBLISH_ERROR, "Dead funding")
-        message = if (isDead) deadFail else CMDSpent(txj)
-      } chan process message
 
     case (chan, wait: WaitFundingDoneData, _: ChannelReestablish) if wait.our.isEmpty =>
       // CMDConfirmed may be sent to an offline channel and there will be no reaction

@@ -80,11 +80,11 @@ object ConnectionManager {
     }
   }
 
-  Obs interval 60.seconds foreach { _ =>
-    val outdated = System.currentTimeMillis - 1000 * 120
-    for (work <- connections.values if work.lastMsg < outdated)
-      work.disconnect
-  }
+  for {
+    _ <- Obs interval 60.seconds
+    outdated = System.currentTimeMillis - 1000L * 120
+    _ \ work <- connections if work.lastMsg < outdated
+  } work.disconnect
 }
 
 class ConnectionListener {

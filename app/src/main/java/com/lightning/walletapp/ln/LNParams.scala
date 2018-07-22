@@ -20,6 +20,8 @@ object LNParams { me =>
   val minDepth = 1
 
   val maxCltvDelta = 7 * 144L
+  val minCapacitySat = 300000L
+  final val maxCapacitySat = 16777215L
   final val maxHtlcValueMsat = 4000000000L
   final val minHtlcValue = MilliSatoshi(1000L)
 

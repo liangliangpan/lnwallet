@@ -13,10 +13,12 @@ import com.lightning.walletapp.StartNodeView._
 import com.lightning.walletapp.ln.wire.FundMsg._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
 import com.lightning.walletapp.lnutils.olympus.OlympusWrap._
+import org.bitcoinj.core.{Address, Coin}
+
 import com.lightning.walletapp.helper.ThrottledWork
+import org.bitcoinj.wallet.SendRequest
 import org.bitcoinj.uri.BitcoinURI
-import org.bitcoinj.core.Address
-import fr.acinq.bitcoin.Satoshi
+import fr.acinq.bitcoin.BinaryData
 import android.os.Bundle
 import java.util.Date
 
@@ -180,7 +182,6 @@ object StartNodeView {
 }
 
 sealed trait StartNodeView { def asString(base: String, separator: String): String }
-// This invariant comes from nodes recommended by dev but also when a node QR is scanned
 case class HardcodedNodeView(ann: NodeAnnouncement, tip: String) extends StartNodeView {
 
   def asString(base: String, separator: String) = {

@@ -52,11 +52,10 @@ case class WSWrap(params: Started) { self =>
   }
 
   ws addListener new WebSocketAdapter {
-    override def onError(ws: WebSocket, why: WebSocketException) = log(why.getMessage)
+    override def onConnected(websocket: WebSocket, headers: JavaListMap) = attemptsLeft = 5
     override def onTextMessage(ws: WebSocket, message: String) = for (lst <- listeners) lst onMessage to[FundMsg](message)
     override def onDisconnected(ws: WebSocket, scf: WebSocketFrame, ccf: WebSocketFrame, cbs: Boolean) = onConnectError(ws, null)
 
-    override def onConnected(websocket: WebSocket, headers: JavaListMap) = attemptsLeft = 5
     override def onConnectError(ws: WebSocket, reason: WebSocketException) = if (shouldReconnect) {
       Obs.just(attemptsLeft -= 1).delay(5.seconds).foreach(in5Sec => for (lst <- listeners) lst.onAttempt)
       for (listener <- listeners) listener.onOffline

@@ -3,6 +3,7 @@ package com.lightning.walletapp
 import spray.json._
 import com.lightning.walletapp.ln._
 import com.lightning.walletapp.Utils._
+
 import scala.collection.JavaConverters._
 import com.lightning.walletapp.ln.wire._
 import com.lightning.walletapp.lnutils._
@@ -22,11 +23,12 @@ import org.bitcoinj.script.ScriptBuilder
 import org.bitcoinj.wallet.SendRequest
 import android.app.AlertDialog
 import java.util.Collections
-import android.os.Bundle
 
+import android.os.Bundle
 import fr.acinq.bitcoin.{BinaryData, MilliSatoshi}
-import org.bitcoinj.core.{Coin, TransactionOutput}
+import org.bitcoinj.core.{Batch, Coin, TransactionOutput}
 import android.widget.{ImageButton, TextView}
+
 import scala.util.{Failure, Success, Try}
 
 
@@ -100,14 +102,9 @@ class LNStartFundActivity extends TimerActivity { me =>
       override def onBecome = {
         case (_, WaitFundingData(_, cmd, accept), WAIT_FOR_ACCEPT, WAIT_FOR_FUNDING) =>
           // Peer has agreed to open a channel so now we create a real funding transaction
-          val realKey = pubKeyScript(cmd.localParams.fundingPrivKey.publicKey, accept.fundingPubkey)
           // We create a funding transaction by replacing an output with a real one in a saved dummy funding transaction
-          val realOut = new TransactionOutput(app.params, null, Coin valueOf cmd.realFundingAmountSat, realKey.getProgram)
-          val withReplacedDummy = cmd.dummyRequest.tx.getOutputs.asScala.patch(cmd.outIndex, List(realOut), 1)
-
-          cmd.dummyRequest.tx.clearOutputs
-          for (out <- withReplacedDummy) cmd.dummyRequest.tx addOutput out
-          freshChan process CMDFunding(app.kit.sign(cmd.dummyRequest).tx)
+          val req = cmd.batch replaceDummyOnce pubKeyScript(cmd.localParams.fundingPrivKey.publicKey, accept.fundingPubkey)
+          freshChan process CMDFunding(app.kit.sign(req).tx)
 
         case (_, wait: WaitFundingDoneData, WAIT_FUNDING_SIGNED, WAIT_FUNDING_DONE) =>
           // Preliminary negotiations are complete, save channel and broadcast a fund tx
@@ -123,11 +120,11 @@ class LNStartFundActivity extends TimerActivity { me =>
       }
 
       private def askLocalFundingConfirm = UITask {
-        val maxCap = MilliSatoshi(math.min(app.kit.conf0Balance.value, 16777215L) * 1000L)
-        val minCap = MilliSatoshi(math.max(LNParams.broadcaster.perKwThreeSat, 300000L) * 1000L)
+        val maxCap = MilliSatoshi(math.min(app.kit.conf0Balance.value, LNParams.maxCapacitySat) * 1000L)
+        val minCap = MilliSatoshi(math.max(LNParams.broadcaster.perKwThreeSat, LNParams.minCapacitySat) * 1000L)
+        val capacityHints = getString(amount_hint_newchan).format(denom withSign minCap, denom withSign maxCap)
         val content = getLayoutInflater.inflate(R.layout.frag_input_fiat_converter, null, false)
-        val txt = getString(amount_hint_newchan).format(denom withSign minCap, denom withSign maxCap)
-        val rateManager = new RateManager(txt, content)
+        val rateManager = new RateManager(capacityHints, content)
         val dummyKey = randomPrivKey.publicKey
 
         def next(msat: MilliSatoshi) = new TxProcessor {
@@ -135,14 +132,11 @@ class LNStartFundActivity extends TimerActivity { me =>
           val pay = P2WSHData(msat, dummyScript)
 
           def futureProcess(unsignedRequest: SendRequest) = {
-            val finder = new PubKeyScriptIndexFinder(unsignedRequest.tx)
-            val outIndex = finder.findPubKeyScriptIndex(dummyScript, None)
-            val realChannelFundingAmountSat = unsignedRequest.tx.getOutput(outIndex).getValue.getValue
-            val theirUnspendableReserveSat = realChannelFundingAmountSat / LNParams.theirReserveToFundingRatio
+            val batch = Batch(unsignedRequest, dummyScript, null)
+            val theirUnspendableReserveSat = batch.fundingAmount.value / LNParams.theirReserveToFundingRatio
             val finalPubKeyScript: BinaryData = ScriptBuilder.createOutputScript(app.kit.currentAddress).getProgram
             val localParams = LNParams.makeLocalParams(theirUnspendableReserveSat, finalPubKeyScript, System.currentTimeMillis)
-            freshChan process CMDOpenChannel(localParams, tempChanId = random getBytes 32, LNParams.broadcaster.perKwThreeSat,
-              pushMsat = 0L, dummyRequest = unsignedRequest, outIndex, realChannelFundingAmountSat)
+            freshChan process CMDOpenChannel(localParams, random getBytes 32, LNParams.broadcaster.perKwThreeSat, batch, 0L)
           }
 
           def onTxFail(fundingError: Throwable) = {
@@ -212,8 +206,7 @@ class LNStartFundActivity extends TimerActivity { me =>
         val finalPubKeyScript: BinaryData = ScriptBuilder.createOutputScript(app.kit.currentAddress).getProgram
         val theirUnspendableReserveSat = wsw.params.start.fundingAmount.amount / LNParams.theirReserveToFundingRatio
         val localParams = LNParams.makeLocalParams(theirUnspendableReserveSat, finalPubKeyScript, System.currentTimeMillis)
-        freshChan process CMDOpenChannel(localParams, tempChanId = random getBytes 32, LNParams.broadcaster.perKwThreeSat,
-          pushMsat = 0L, dummyRequest = null, outIndex = -1, wsw.params.start.fundingAmount.amount)
+        freshChan process CMDOpenChannel(localParams, random getBytes 32, LNParams.broadcaster.perKwThreeSat, batch = null, 0L)
       }
     }
 
