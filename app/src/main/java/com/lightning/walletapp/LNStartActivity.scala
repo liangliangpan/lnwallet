@@ -13,12 +13,10 @@ import com.lightning.walletapp.StartNodeView._
 import com.lightning.walletapp.ln.wire.FundMsg._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
 import com.lightning.walletapp.lnutils.olympus.OlympusWrap._
-import org.bitcoinj.core.{Address, Coin}
-
 import com.lightning.walletapp.helper.ThrottledWork
-import org.bitcoinj.wallet.SendRequest
 import org.bitcoinj.uri.BitcoinURI
-import fr.acinq.bitcoin.BinaryData
+import org.bitcoinj.core.Address
+import fr.acinq.bitcoin.Satoshi
 import android.os.Bundle
 import java.util.Date
 
@@ -104,6 +102,7 @@ class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
       val humanExpiry = me time new Date(wrk.params.expiry)
       val humanFeeSum = denom withSign wrk.params.fee
 
+      externalFundWrap setVisibility View.VISIBLE
       externalFundWrap setBackgroundColor getResources.getColor(color, null)
       externalFundInfo setText host.getString(text).format(wrk.params.start.host,
         humanExpiry, humanAmountSum, humanFeeSum).html
@@ -114,7 +113,6 @@ class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
       val disconnect = host.onButtonTap(ExternalFunder disconnectWSWrap freshWSWrap)
       funderInfo(freshWSWrap, R.color.material_blue_grey_800, ex_fund_connecting).run
       externalFundCancel setOnClickListener disconnect
-      externalFundWrap setVisibility View.VISIBLE
 
       val err2String =
         Map(FAIL_VERIFY_ERROR -> err_fund_verify_error)

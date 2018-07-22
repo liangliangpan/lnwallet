@@ -17,6 +17,8 @@ import org.bitcoinj.wallet.SendRequest
 import fr.acinq.bitcoin.BinaryData
 
 
+// Holds an unsigned channel funding tx with dummy pubkeyScript
+// is supposed to be replaced by real funding script, may contain many outputs
 case class Batch(unsigned: SendRequest, dummyScript: BinaryData, pr: PaymentRequest) {
   lazy val fundOutIdx = new PubKeyScriptIndexFinder(unsigned.tx).findPubKeyScriptIndex(dummyScript, None)
   lazy val fundingAmountSat = unsigned.tx.getOutput(fundOutIdx).getValue.value
