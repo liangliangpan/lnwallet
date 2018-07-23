@@ -9,6 +9,7 @@ import com.lightning.walletapp.R.string._
 import com.lightning.walletapp.ln.Tools._
 import com.lightning.walletapp.ln.Channel._
 import com.lightning.walletapp.Denomination._
+import com.lightning.walletapp.Denomination._
 import com.lightning.walletapp.StartNodeView._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
 import com.lightning.walletapp.lnutils.ImplicitJsonFormats._
@@ -39,9 +40,9 @@ class LNStartFundActivity extends TimerActivity { me =>
     setContentView(R.layout.activity_ln_start_fund)
 
     app.TransData.value match {
-      case remoteView @ RemoteNodeView(ann \ _) => proceed(remoteView.asString(nodeFundView, "<br>"), ann)
-      case hardcodedView @ HardcodedNodeView(ann, _) => proceed(hardcodedView.asString(nodeFundView, "<br>"), ann)
-      case ann: NodeAnnouncement => proceed(HardcodedNodeView(ann, chansNumber.last).asString(nodeFundView, "<br>"), ann)
+      case hardcodedView @ HardcodedNodeView(ann, _) => proceed(None, hardcodedView.asString(nodeFundView, "<br>"), ann)
+      case remoteView @ RemoteNodeView(ann \ _, batchOpt) => proceed(batchOpt, remoteView.asString(nodeFundView, "<br>"), ann)
+      case ann: NodeAnnouncement => proceed(None, HardcodedNodeView(ann, chansNumber.last).asString(nodeFundView, "<br>"), ann)
       case _ => finish
     }
 
@@ -49,7 +50,7 @@ class LNStartFundActivity extends TimerActivity { me =>
     // Or back if resources are freed
   } else me exitTo classOf[MainActivity]
 
-  def proceed(asString: String, ann: NodeAnnouncement) = {
+  def proceed(batch: Option[Batch], asString: String, ann: NodeAnnouncement) = {
     val freshChan = app.ChannelManager.createChannel(Set.empty, InitData apply ann)
     lnStartFundCancel setOnClickListener onButtonTap(whenBackPressed.run)
     lnStartFundDetails setText asString.html
@@ -75,23 +76,7 @@ class LNStartFundActivity extends TimerActivity { me =>
       }
     }
 
-    def saveChan(some: HasCommitments) = {
-      // First of all we should store this chan
-      // error here will halt all further progress
-      freshChan STORE some
-
-      // Start watching a channel funding script and save a channel
-      val fundingScript = some.commitments.commitInput.txOut.publicKeyScript
-      app.kit.wallet.addWatchedScripts(Collections singletonList fundingScript)
-
-      // Attempt to save a channel on the cloud right away
-      val refund = RefundingData(some.announce, None, some.commitments)
-      val encrypted = AES.encode(refund.toJson.toString, LNParams.cloudSecret)
-      val act = CloudAct(encrypted, Seq("key" -> LNParams.cloudId.toString), "data/put")
-      OlympusWrap tellClouds act
-    }
-
-    def localOpenListener = new OpenListener {
+    abstract class LocalOpenListener extends OpenListener {
       override def onOperational(remotePeerCandidateNodeId: PublicKey) =
         // Remote peer has sent their Init so we ask user to provide an amount
         if (remotePeerCandidateNodeId == ann.nodeId) askLocalFundingConfirm.run
@@ -116,7 +101,30 @@ class LNStartFundActivity extends TimerActivity { me =>
           me exitTo classOf[WalletActivity]
       }
 
-      private def askLocalFundingConfirm = UITask {
+      // Provide manual or batched amount
+      def askLocalFundingConfirm: Runnable
+    }
+
+    def saveChan(some: HasCommitments) = {
+      // First of all we should store this chan
+      // error here will halt all further progress
+      freshChan STORE some
+
+      // Start watching a channel funding script and save a channel
+      val fundingScript = some.commitments.commitInput.txOut.publicKeyScript
+      app.kit.wallet.addWatchedScripts(Collections singletonList fundingScript)
+
+      // Attempt to save a channel on the cloud right away
+      val refund = RefundingData(some.announce, None, some.commitments)
+      val encrypted = AES.encode(refund.toJson.toString, LNParams.cloudSecret)
+      val act = CloudAct(encrypted, Seq("key" -> LNParams.cloudId.toString), "data/put")
+      OlympusWrap tellClouds act
+    }
+
+    def localOpenListener = new LocalOpenListener {
+      // Asks user to provide a funding amount manually
+
+      def askLocalFundingConfirm = UITask {
         val maxCap = MilliSatoshi(math.min(app.kit.conf0Balance.value, LNParams.maxCapacitySat) * 1000L)
         val minCap = MilliSatoshi(math.max(LNParams.broadcaster.perKwThreeSat, LNParams.minCapacitySat) * 1000L)
         val capacityHints = getString(amount_hint_newchan).format(denom withSign minCap, denom withSign maxCap)
@@ -130,8 +138,8 @@ class LNStartFundActivity extends TimerActivity { me =>
 
           def futureProcess(unsignedRequest: SendRequest) = {
             val batch = Batch(unsignedRequest, dummyScript, null)
+            val finalPubKeyScript = ScriptBuilder.createOutputScript(app.kit.currentAddress).getProgram
             val theirUnspendableReserveSat = batch.fundingAmountSat / LNParams.theirReserveToFundingRatio
-            val finalPubKeyScript: BinaryData = ScriptBuilder.createOutputScript(app.kit.currentAddress).getProgram
             val localParams = LNParams.makeLocalParams(theirUnspendableReserveSat, finalPubKeyScript, System.currentTimeMillis)
             freshChan process CMDOpenChannel(localParams, random getBytes 32, LNParams.broadcaster.perKwThreeSat, batch, 0L)
           }
@@ -152,6 +160,22 @@ class LNStartFundActivity extends TimerActivity { me =>
         def useMax(alert: AlertDialog) = rateManager setSum Try(maxCap)
         val bld = baseBuilder(getString(ln_ops_start_fund_local_title).html, content)
         mkCheckFormNeutral(askAttempt, none, useMax, bld, dialog_next, dialog_cancel, dialog_max)
+      }
+    }
+
+    def localBatchListener(batch: Batch) = new LocalOpenListener {
+      // Uses a prebuilt batch which funds a channel and pays onchain
+
+      def askLocalFundingConfirm = UITask {
+        val bld = baseBuilder(getString(ln_ops_start_fund_local_title).html, batch.asString)
+        mkCheckForm(sendCMDOpenChannel, none, bld, dialog_next, dialog_cancel)
+      }
+
+      def sendCMDOpenChannel(alert: AlertDialog) = rm(alert) {
+        val finalPubKeyScript = ScriptBuilder.createOutputScript(app.kit.currentAddress).getProgram
+        val theirUnspendableReserveSat = batch.fundingAmountSat / LNParams.theirReserveToFundingRatio
+        val localParams = LNParams.makeLocalParams(theirUnspendableReserveSat, finalPubKeyScript, System.currentTimeMillis)
+        freshChan process CMDOpenChannel(localParams, random getBytes 32, LNParams.broadcaster.perKwThreeSat, batch, 0L)
       }
     }
 
@@ -213,9 +237,10 @@ class LNStartFundActivity extends TimerActivity { me =>
       override def onDisconnect: Unit = whenBackPressed.run
     }
 
-    lazy val openListener = ExternalFunder.worker match {
-      case Some(workingWsw) => remoteOpenListener(workingWsw)
-      case None => localOpenListener
+    lazy val openListener = ExternalFunder.worker -> batch match {
+      case Some(workingWsw) \ None => remoteOpenListener(workingWsw)
+      case None \ Some(realBatch) => localBatchListener(realBatch)
+      case _ => localOpenListener
     }
 
     whenBackPressed = UITask {

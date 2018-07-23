@@ -21,6 +21,7 @@ object LNParams { me =>
 
   val maxCltvDelta = 7 * 144L
   val minCapacitySat = 300000L
+  final val dust = Satoshi(5460L)
   final val maxCapacitySat = 16777215L
   final val maxHtlcValueMsat = 4000000000L
   final val minHtlcValue = MilliSatoshi(1000L)
@@ -55,7 +56,7 @@ object LNParams { me =>
     val Seq(fund, revoke, pay, delay, htlc, sha) = for (n <- 0L to 5L) yield derivePrivateKey(extendedNodeKey, idx :: n :: Nil)
     LocalParams(maxHtlcValueInFlightMsat = UInt64(2000000000L), theirReserve, toSelfDelay = 144, maxAcceptedHtlcs = 25,
       fund.privateKey, revoke.privateKey, pay.privateKey, delay.privateKey, htlc.privateKey, finalScriptPubKey,
-      dustLimit = Satoshi(5460L), shaSeed = sha256(sha.privateKey.toBin), isFunder = true)
+      dustLimit = dust, shaSeed = sha256(sha.privateKey.toBin), isFunder = true)
   }
 }
 

@@ -190,8 +190,6 @@
 
     <string name="ln_share_hash">Share payment hash</string>
     <string name="ln_share_proof">Share Proof of Payment</string>
-    <string name="ln_share_routing">Share routing details</string>
-    <string name="ln_share_errors">Share peer responses</string>
 
     <string name="ln_status_peer">Select peer</string>
     <string name="ln_description_hint">add some description</string>
@@ -199,6 +197,7 @@
     <string name="ln_proof">Signed payment request: %1$s\n\nPayment preimage: %2$s</string>
     <string name="ln_qr_disposable"><![CDATA[Request is valid for 2 days<br>Do not reuse this QR code]]></string>
     <string name="ln_open_offer">Would you like to open a payment channel with the payee to be able to fulfill its payment requests?</string>
+    <string name="ln_open_batch"><![CDATA[Would you like to pay onchain and use change to open a channel with payee?<br><br>requested %1$s<br>change %2$s<br>fee %3$s]]></string>
 
     <!-- see PaymentInfo.scala -->
     <array name="ln_payment_states">

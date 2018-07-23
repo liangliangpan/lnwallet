@@ -27,7 +27,6 @@ import com.lightning.walletapp.helper.{ReactLoader, RichCursor}
 import org.bitcoinj.core.Transaction.{MIN_NONDUST_OUTPUT => MIN}
 import fr.acinq.bitcoin.{BinaryData, Crypto, MilliSatoshi, Satoshi}
 import com.lightning.walletapp.ln.Tools.{none, random, runAnd, wrap}
-import org.bitcoinj.wallet.listeners.WalletCoinsReceivedEventListener
 import org.bitcoinj.core.TransactionConfidence.ConfidenceType.DEAD
 import org.bitcoinj.core.listeners.PeerDisconnectedEventListener
 import org.bitcoinj.core.listeners.PeerConnectedEventListener
@@ -245,6 +244,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
       info.incoming -> onChainRunnable(rd.pr) match {
         case 0 \ Some(runnable) if info.lastMsat == 0 && info.lastExpiry == 0 && info.actualStatus == FAILURE =>
+          // Payment was failed without even trying because wallet is offline or no suitable payment routes were found
           val bld = baseBuilder(lnTitleOutNoFee.format(humanStatus, coloredOut(info.firstSum), inFiat).html, detailsWrapper)
           mkCheckFormNeutral(alert => rm(alert)(none), none, alert => rm(alert)(runnable.run), bld, dialog_ok, -1, dialog_pay_onchain)
 
@@ -255,6 +255,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
         case 0 \ Some(runnable) =>
           val bld = baseBuilder(outgoingTitle.html, detailsWrapper)
+          // We have a fallback onchain address so display it if payment was not successfull
           if (info.actualStatus != FAILURE) showForm(negBuilder(dialog_ok, outgoingTitle.html, detailsWrapper).create)
           else mkCheckFormNeutral(alert => rm(alert)(none), doSend(rd), alert => rm(alert)(runnable.run), bld, dialog_ok,
             noResource = if (info.pr.isFresh) dialog_retry else -1, dialog_pay_onchain)
@@ -306,6 +307,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
       lst setHeaderDividersEnabled false
       lst addHeaderView detailsWrapper
       lst setAdapter views
+      lst setDivider null
 
       viewTxOutside setOnClickListener onButtonTap {
         val uri = s"https://testnet.smartbit.com.au/tx/" + wrap.tx.getHashAsString
@@ -502,48 +504,32 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
           }
         }
 
+        val text = app.getString(ln_send_title).format(me getDescription pr.description).html
+        mkCheckForm(sendAttempt, none, baseBuilder(text, content), dialog_pay, dialog_cancel)
         for (senderAskedAmount <- pr.amount) rateManager setSum Try(senderAskedAmount)
-        val text = app.getString(ln_send_title).format(me getDescription pr.description)
-        val bld = baseBuilder(text.html, content)
-
-        onChainRunnable(pr) -> pr.amount match {
-          case Some(runnable) \ Some(askedAmount) if maxCanSend < askedAmount =>
-            mkCheckFormNeutral(sendAttempt, none, alert => rm(alert)(runnable.run),
-              bld, dialog_pay, dialog_cancel, dialog_pay_onchain)
-
-          case otherwise =>
-            mkCheckForm(sendAttempt, none,
-              bld, dialog_pay, dialog_cancel)
-        }
       }
     }
 
   def proposeAlternative(pr: PaymentRequest) = {
     def offerOptions(remoteNodeView: RemoteNodeView) = UITask {
+      // Offer to do a batched opening if fallback address is present
       val pretty = remoteNodeView.asString(StartNodeView.nodeView, "<br>")
-      val bld = baseBuilder(app getString ln_open_offer, pretty.html)
 
-      def proceed = {
+      val bld = remoteNodeView.batch match {
+        case Some(realBatch) => baseBuilder(realBatch.asString, pretty.html)
+        case None => baseBuilder(app getString ln_open_offer, pretty.html)
+      }
+
+      mkCheckForm(alert => rm(alert) {
         app.TransData.value = remoteNodeView
         host goTo classOf[LNStartFundActivity]
-      }
-
-      onChainRunnable(pr) match {
-        case Some(runnable) =>
-          mkCheckFormNeutral(alert => rm(alert)(proceed), none,
-            alert => rm(alert)(runnable.run), bld, dialog_ok,
-            dialog_cancel, dialog_pay_onchain)
-
-        case None =>
-          mkCheckForm(alert => rm(alert)(proceed),
-            none, bld, dialog_ok, dialog_cancel)
-      }
+      }, none, bld, dialog_ok, dialog_cancel)
     }
 
     for {
-      res <- retry(OlympusWrap findNodes pr.nodeId.toString, pickInc, 2 to 3)
-      announce \ connects <- res take 1 if announce.nodeId == pr.nodeId
-      remoteNodeView = RemoteNodeView(announce -> connects)
+      result <- retry(OlympusWrap findNodes "03933884aaf1d6b108397e5efe5c86bcf2d8ca8d2f700eda99db9214fc2712b134", pickInc, 2 to 3)
+      acn @ (announce, chansNum) <- result take 1 //if announce.nodeId == pr.nodeId
+      remoteNodeView = RemoteNodeView(acn, TxWrap.findBestBatch(pr).toOption)
     } offerOptions(remoteNodeView).run
     app toast ln_receive_nochan
   }
@@ -559,7 +545,6 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
   // BTC SEND AND BOOST
 
   def onChainRunnable(pr: PaymentRequest) =
-    // This content should NOT be executed right away
     for (adr: String <- pr.fallbackAddress) yield UITask {
       val fallbackAddress = Address.fromString(app.params, adr)
       val tryMSat = Try(pr.amount.get)

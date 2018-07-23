@@ -34,7 +34,7 @@ trait Denomination {
     MilliSatoshi(factored.toLong)
   }
 
-  def asString(msat: MilliSatoshi) = {
+  def asString(msat: MilliSatoshi): String = {
     val factored = BigDecimal(msat.amount) / factor
     fmt format factored
   }

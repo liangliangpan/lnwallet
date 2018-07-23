@@ -16,7 +16,7 @@ import com.lightning.walletapp.lnutils.olympus.OlympusWrap._
 import com.lightning.walletapp.helper.ThrottledWork
 import org.bitcoinj.uri.BitcoinURI
 import org.bitcoinj.core.Address
-import fr.acinq.bitcoin.Satoshi
+import org.bitcoinj.core.Batch
 import android.os.Bundle
 import java.util.Date
 
@@ -189,7 +189,8 @@ case class HardcodedNodeView(ann: NodeAnnouncement, tip: String) extends StartNo
 }
 
 // This invariant comes as a search result from Olympus server queries
-case class RemoteNodeView(acn: AnnounceChansNum) extends StartNodeView {
+// present Batch indicates that channel is going to be opened using a batched on/off-chain tx
+case class RemoteNodeView(acn: AnnounceChansNum, batch: Option[Batch] = None) extends StartNodeView {
 
   def asString(base: String, separator: String) = {
     val channelAnnouncement \ channelConnections = acn

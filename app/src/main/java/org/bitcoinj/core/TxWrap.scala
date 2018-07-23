@@ -5,16 +5,19 @@ import com.lightning.walletapp.Utils._
 import org.bitcoinj.wallet.SendRequest._
 import scala.collection.JavaConverters._
 import com.lightning.walletapp.ln.Tools._
+import com.lightning.walletapp.R.string._
 import com.lightning.walletapp.ln.Scripts._
+import com.lightning.walletapp.Denomination._
 import org.bitcoinj.wallet.WalletTransaction.Pool._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
 
 import scala.util.{Success, Try}
+import fr.acinq.bitcoin.{BinaryData, Satoshi}
 import com.lightning.walletapp.{AddrData, P2WSHData}
+import com.lightning.walletapp.Denomination.mSat2Coin
 import com.lightning.walletapp.lnutils.RatesSaver
 import org.bitcoinj.script.ScriptBuilder
 import org.bitcoinj.wallet.SendRequest
-import fr.acinq.bitcoin.BinaryData
 
 
 // Holds an unsigned channel funding tx with dummy pubkeyScript
@@ -33,6 +36,14 @@ case class Batch(unsigned: SendRequest, dummyScript: BinaryData, pr: PaymentRequ
     // This mutates an inner tx, only use once!
     unsigned
   }
+
+  def asString = {
+    val base = app getString ln_open_batch
+    val onchain = coloredOut apply pr.amount.get
+    val onchainFee = coloredOut apply unsigned.tx.getFee
+    val channelSum = coloredIn apply Satoshi(fundingAmountSat)
+    base.format(onchain, channelSum, onchainFee).html
+  }
 }
 
 object TxWrap {
@@ -43,7 +54,12 @@ object TxWrap {
     req
   }
 
-  def findBestBatch(where: Address, sum: Coin, pr: PaymentRequest) = Try {
+  def findBestBatch(pr: PaymentRequest) = Try {
+    // Any of these three might throw and thus work as guards
+    val where = Address.fromString(app.params, pr.fallbackAddress.get)
+    val sum = mSat2Coin(pr.amount.get)
+
+    require(sum > LNParams.dust, "Dust can't be paid onchain")
     val dummyScript = pubKeyScript(randomPrivKey.publicKey, randomPrivKey.publicKey)
     val addrScript = ScriptBuilder.createOutputScript(where).getProgram
     val emptyThreshold = Coin.valueOf(LNParams.minCapacitySat * 2)
