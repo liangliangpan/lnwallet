@@ -527,8 +527,8 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
     }
 
     for {
-      result <- retry(OlympusWrap findNodes "03933884aaf1d6b108397e5efe5c86bcf2d8ca8d2f700eda99db9214fc2712b134", pickInc, 2 to 3)
-      acn @ (announce, chansNum) <- result take 1 //if announce.nodeId == pr.nodeId
+      result <- retry(OlympusWrap findNodes pr.nodeId.toString, pickInc, 2 to 3)
+      acn @ (announce, chansNum) <- result take 1 if announce.nodeId == pr.nodeId
       remoteNodeView = RemoteNodeView(acn, TxWrap.findBestBatch(pr).toOption)
     } offerOptions(remoteNodeView).run
     app toast ln_receive_nochan
