@@ -472,7 +472,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
   def sendPayment(pr: PaymentRequest) =
     if (PaymentRequest.prefixes(chainHash) != pr.prefix) app toast err_general
-    else if (app.ChannelManager.notClosingOrRefunding.isEmpty) proposeAlternative(pr)
+    else if (app.ChannelManager.notClosingOrRefunding.isEmpty) offerBatch(pr)
     else if (pr.nodeId == nodePublicKey) app toast err_self_payment
     else if (!pr.isFresh) app toast dialog_pr_expired else {
 
@@ -506,27 +506,10 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
       }
     }
 
-  def proposeAlternative(pr: PaymentRequest) = {
-    def offerOptions(remoteNodeView: RemoteNodeView) = UITask {
-      // Offer to do a batched opening if fallback address is present
-      val pretty = remoteNodeView.asString(StartNodeView.nodeView, "<br>")
-
-      val bld = remoteNodeView.batch match {
-        case None => baseBuilder(app getString ln_open_offer, pretty.html)
-        case Some(batch) => baseBuilder(batch asString ln_open_batch, pretty.html)
-      }
-
-      mkCheckForm(alert => rm(alert) {
-        app.TransData.value = remoteNodeView
-        host goTo classOf[LNStartFundActivity]
-      }, none, bld, dialog_ok, dialog_cancel)
-    }
-
-    for {
-      result <- retry(OlympusWrap findNodes pr.nodeId.toString, pickInc, 2 to 3)
-      acn @ (announce, chansNum) <- result take 1 if announce.nodeId == pr.nodeId
-      remoteNodeView = RemoteNodeView(acn, TxWrap.findBestBatch(pr).toOption)
-    } offerOptions(remoteNodeView).run
+  def offerBatch(pr: PaymentRequest) = {
+    val batchTry: Try[Batch] = TxWrap findBestBatch pr
+    batchTry.map(batch => app.TransData.value = batch)
+    host goTo classOf[LNStartActivity]
     app toast ln_receive_nochan
   }
 

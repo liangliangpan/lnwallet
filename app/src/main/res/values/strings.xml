@@ -195,9 +195,6 @@
     <string name="ln_no_description">No description provided</string>
     <string name="ln_proof">Signed payment request: %1$s\n\nPayment preimage: %2$s</string>
     <string name="ln_qr_disposable"><![CDATA[Request is valid for 2 days<br>Do not reuse this QR code]]></string>
-    <string name="ln_open_offer">Would you like to open a payment channel with the payee to be able to fulfill its payment requests?</string>
-    <string name="ln_open_batch"><![CDATA[Would you like to pay onchain and use change to open a channel with payee?<br><br>requested %1$s<br>change %2$s<br>fee %3$s]]></string>
-    <string name="ln_open_batch_confirm"><![CDATA[You are about to fulfill a request onchain and at once open a channel with payee<br><br>requested %1$s<br>channel %2$s<br>fee %3$s]]></string>
 
     <!-- see PaymentInfo.scala -->
     <array name="ln_payment_states">
