@@ -135,7 +135,6 @@
         <item><![CDATA[<strong>awaiting&#160;confirmation</strong>]]></item>
         <item><![CDATA[<strong>%1$s&#160;confirmation</strong>]]></item>
         <item><![CDATA[<strong>%1$s&#160;confirmations</strong>]]></item>
-        <item><![CDATA[<strong>cancelled</strong>]]></item>
     </array>
 
     <string name="send_scan_qr">Scan a QR code</string>

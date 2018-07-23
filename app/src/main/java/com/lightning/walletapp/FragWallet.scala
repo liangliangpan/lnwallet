@@ -320,31 +320,27 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
       }
 
       val header = wrap.fee match {
-        // View is mainly based on fee
-        // see TxWrap for details on this
-
-        case _ if txDead =>
-          // Details do not matter
-          sumOut format txsConfs.last
-
         case _ if wrap.visibleValue.isPositive =>
           // This is an incoming tx, do not show a fee
           val inFiat = msatInFiatHuman(wrap.visibleValue)
-          app.getString(btc_incoming_title).format(confs,
-            coloredIn(wrap.visibleValue), inFiat)
+          val humanAmount = coloredIn(wrap.visibleValue)
+          val base = app.getString(btc_incoming_title)
+          base.format(confs, humanAmount, inFiat)
 
         case Some(fee) =>
           // This is an outgoing tx with fee
-          val amount = Satoshi(-wrap.visibleValue.value)
-          val paidFeePercent = fee.value / (amount.amount / 100D)
-          app.getString(btc_outgoing_title).format(confs, coloredOut(amount),
-            msatInFiatHuman(amount), coloredOut(fee), paidFeePercent)
+          val base = app.getString(btc_outgoing_title)
+          val inFiat = msatInFiatHuman(-wrap.visibleValue)
+          val humanAmount = coloredOut(-wrap.visibleValue)
+          val paidFeePercent = fee.value / (-wrap.visibleValue.value / 100D)
+          base.format(confs, humanAmount, inFiat, coloredOut(fee), paidFeePercent)
 
         case None =>
           // Should never happen but whatever
           val inFiat = msatInFiatHuman(-wrap.visibleValue)
-          app.getString(btc_outgoing_title_no_fee).format(confs,
-            coloredOut(-wrap.visibleValue), inFiat)
+          val humanAmount = coloredOut(-wrap.visibleValue)
+          val base = app.getString(btc_outgoing_title_no_fee)
+          base.format(confs, humanAmount, inFiat)
       }
 
       // Check if CPFP can be applied

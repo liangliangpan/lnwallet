@@ -139,7 +139,6 @@
         <item><![CDATA[<strong>%1$s&#160;подтвреждение</strong>]]></item>
         <item><![CDATA[<strong>%1$s&#160;подтверждения</strong>]]></item>
         <item><![CDATA[<strong>%1$s&#160;подтверждений</strong>]]></item>
-        <item><![CDATA[<strong>отменена</strong>]]></item>
     </array>
 
     <string name="send_scan_qr">Сканировать QR-код</string>
