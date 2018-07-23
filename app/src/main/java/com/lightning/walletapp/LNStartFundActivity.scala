@@ -167,7 +167,8 @@ class LNStartFundActivity extends TimerActivity { me =>
       // Uses a prebuilt batch which funds a channel and pays onchain
 
       def askLocalFundingConfirm = UITask {
-        val bld = baseBuilder(getString(ln_ops_start_fund_local_title).html, batch.asString)
+        val text = batch asString ln_open_batch_confirm
+        val bld = baseBuilder(getString(ln_ops_start_fund_local_title).html, text)
         mkCheckForm(sendCMDOpenChannel, none, bld, dialog_next, dialog_cancel)
       }
 

@@ -193,9 +193,7 @@
     <!-- SPECIFIC TO LIGHTNING NETWORK -->
 
     <string name="ln_share_hash">Хэш платежа</string>
-    <string name="ln_share_routing">Детали маршрута</string>
     <string name="ln_share_proof">Доказательство платежа</string>
-    <string name="ln_share_errors">История Onion-ответов</string>
 
     <string name="ln_status_peer">Выберите пира</string>
     <string name="ln_description_hint">добавьте описание</string>
@@ -203,6 +201,8 @@
     <string name="ln_proof">Подписанный платежный запрос: %1$s\n\nPreimage платежа: %2$s</string>
     <string name="ln_qr_disposable"><![CDATA[Платеж валиден 2 дня<br>Не используйте его повторно]]></string>
     <string name="ln_open_offer">Хотите открыть платежный канал с получателем чтобы отправлять ему платежи?</string>
+    <string name="ln_open_batch"><![CDATA[Would you like to pay onchain and use change to open a channel with payee?<br><br>requested %1$s<br>change %2$s<br>fee %3$s]]></string>
+    <string name="ln_open_batch_confirm"><![CDATA[You are about to fulfill a request onchain and at once open a channel with payee<br><br>requested %1$s<br>channel %2$s<br>fee %3$s]]></string>
 
     <!-- see PaymentInfo.scala -->
     <array name="ln_payment_states">

@@ -37,12 +37,11 @@ case class Batch(unsigned: SendRequest, dummyScript: BinaryData, pr: PaymentRequ
     unsigned
   }
 
-  def asString = {
-    val base = app getString ln_open_batch
+  def asString(text: Int) = {
     val onchain = coloredOut apply pr.amount.get
     val onchainFee = coloredOut apply unsigned.tx.getFee
     val channelSum = coloredIn apply Satoshi(fundingAmountSat)
-    base.format(onchain, channelSum, onchainFee).html
+    app.getString(text).format(onchain, channelSum, onchainFee).html
   }
 }
 

@@ -516,8 +516,8 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
       val pretty = remoteNodeView.asString(StartNodeView.nodeView, "<br>")
 
       val bld = remoteNodeView.batch match {
-        case Some(realBatch) => baseBuilder(realBatch.asString, pretty.html)
         case None => baseBuilder(app getString ln_open_offer, pretty.html)
+        case Some(batch) => baseBuilder(batch asString ln_open_batch, pretty.html)
       }
 
       mkCheckForm(alert => rm(alert) {
