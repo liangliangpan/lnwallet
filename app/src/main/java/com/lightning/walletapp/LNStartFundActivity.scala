@@ -9,7 +9,6 @@ import com.lightning.walletapp.R.string._
 import com.lightning.walletapp.ln.Tools._
 import com.lightning.walletapp.ln.Channel._
 import com.lightning.walletapp.Denomination._
-import com.lightning.walletapp.Denomination._
 import com.lightning.walletapp.StartNodeView._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
 import com.lightning.walletapp.lnutils.ImplicitJsonFormats._
@@ -39,18 +38,17 @@ class LNStartFundActivity extends TimerActivity { me =>
   def INIT(state: Bundle) = if (app.isAlive) {
     setContentView(R.layout.activity_ln_start_fund)
 
-    app.TransData.value match {
-      case hardcodedView @ HardcodedNodeView(ann, _) => proceed(None, hardcodedView.asString(nodeFundView, "<br>"), ann)
-      case remoteView @ RemoteNodeView(ann \ _, batchOpt) => proceed(batchOpt, remoteView.asString(nodeFundView, "<br>"), ann)
-      case ann: NodeAnnouncement => proceed(None, HardcodedNodeView(ann, chansNumber.last).asString(nodeFundView, "<br>"), ann)
+    app.TransData checkAndMaybeErase {
+      case remoteNodeView @ RemoteNodeView(ann \ _) => proceed(remoteNodeView.asString(nodeFundView, "<br>"), ann)
+      case hardcodedNodeView @ HardcodedNodeView(ann, _) => proceed(hardcodedNodeView.asString(nodeFundView, "<br>"), ann)
+      case ann: NodeAnnouncement => proceed(HardcodedNodeView(ann, chansNumber.last).asString(nodeFundView, "<br>"), ann)
       case _ => finish
     }
 
-    app.TransData.value = null
     // Or back if resources are freed
   } else me exitTo classOf[MainActivity]
 
-  def proceed(batch: Option[Batch], asString: String, ann: NodeAnnouncement) = {
+  def proceed(asString: String, ann: NodeAnnouncement) = {
     val freshChan = app.ChannelManager.createChannel(Set.empty, InitData apply ann)
     lnStartFundCancel setOnClickListener onButtonTap(whenBackPressed.run)
     lnStartFundDetails setText asString.html
@@ -85,7 +83,7 @@ class LNStartFundActivity extends TimerActivity { me =>
         case (_, WaitFundingData(_, cmd, accept), WAIT_FOR_ACCEPT, WAIT_FOR_FUNDING) =>
           // Peer has agreed to open a channel so now we create a real funding transaction
           // We create a funding transaction by replacing an output with a real one in a saved dummy funding transaction
-          val req = cmd.batch replaceDummyOnce pubKeyScript(cmd.localParams.fundingPrivKey.publicKey, accept.fundingPubkey)
+          val req = cmd.batch replaceDummy pubKeyScript(cmd.localParams.fundingPrivKey.publicKey, accept.fundingPubkey)
           freshChan process CMDFunding(app.kit.sign(req).tx)
 
         case (_, wait: WaitFundingDoneData, WAIT_FUNDING_SIGNED, WAIT_FUNDING_DONE) =>
@@ -238,11 +236,12 @@ class LNStartFundActivity extends TimerActivity { me =>
       override def onDisconnect: Unit = whenBackPressed.run
     }
 
-    lazy val openListener = ExternalFunder.worker -> batch match {
-      case Some(workingWsw) \ None => remoteOpenListener(workingWsw)
-      case None \ Some(realBatch) => localBatchListener(realBatch)
-      case _ => localOpenListener
-    }
+    lazy val openListener =
+      ExternalFunder.worker -> FragLNStart.batchOpt match {
+        case Some(workingWsw) \ None => remoteOpenListener(workingWsw)
+        case None \ Some(realBatch) => localBatchListener(realBatch)
+        case _ => localOpenListener
+      }
 
     whenBackPressed = UITask {
       freshChan.listeners -= openListener

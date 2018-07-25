@@ -100,16 +100,17 @@ class WalletApp extends Application { me =>
     private[this] val lnLink = s"(?im).*?($prefixes)([0-9]{1,}[a-z0-9]+){1}".r.unanchored
     private[this] val funder = "(lnbcfunder|lntbfunder|lnbcrtfunder):([a-z0-9]+)".r
 
-    private def resolveURI(uri: BitcoinURI) = {
-      val hasChans = ChannelManager.notClosing.exists(isOperational)
-      val prOpt = Option(uri.getLightningRequest) map PaymentRequest.read
-      val canOffChain = hasChans && prOpt.exists(_.isFresh)
-      if (canOffChain) prOpt.get else uri
+    case object DoNotEraseValue
+    type Checker = PartialFunction[Any, Any]
+    def checkAndMaybeErase(check: Checker) = check(value) match {
+      // Sometimes we need to forward a value between activity switches
+      case DoNotEraseValue => Tools log "app.TransData.value retained"
+      case _ => value = null
     }
 
     def recordValue(rawText: String) = value = rawText match {
-      case _ if rawText startsWith "bitcoin" => self resolveURI new BitcoinURI(params, rawText)
-      case _ if rawText startsWith "BITCOIN" => self resolveURI new BitcoinURI(params, rawText.toLowerCase)
+      case _ if rawText startsWith "bitcoin" => new BitcoinURI(params, rawText)
+      case _ if rawText startsWith "BITCOIN" => new BitcoinURI(params, rawText.toLowerCase)
       case nodeLink(key, host, port) => mkNodeAnnouncement(PublicKey(key), host, port.toInt)
       case lnLink(prefix, req) => PaymentRequest read s"$prefix$req".toLowerCase
       case funder(_, paramsHex) => to[Started](paramsHex.hex2asci)

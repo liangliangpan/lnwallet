@@ -5,7 +5,6 @@ import com.lightning.walletapp.Utils._
 import org.bitcoinj.wallet.SendRequest._
 import scala.collection.JavaConverters._
 import com.lightning.walletapp.ln.Tools._
-import com.lightning.walletapp.R.string._
 import com.lightning.walletapp.ln.Scripts._
 import com.lightning.walletapp.Denomination._
 import org.bitcoinj.wallet.WalletTransaction.Pool._
@@ -21,14 +20,13 @@ import org.bitcoinj.wallet.SendRequest
 
 
 // Holds an unsigned channel funding tx with dummy pubkeyScript
-// is supposed to be replaced by real funding script, may contain many outputs
 case class Batch(unsigned: SendRequest, dummyScript: BinaryData, pr: PaymentRequest) {
-  lazy val fundOutIdx = new PubKeyScriptIndexFinder(unsigned.tx).findPubKeyScriptIndex(dummyScript, None)
-  lazy val fundingAmountSat = unsigned.tx.getOutput(fundOutIdx).getValue.value
+  val fundOutIdx = new PubKeyScriptIndexFinder(unsigned.tx).findPubKeyScriptIndex(dummyScript)
+  val fundingAmountSat = unsigned.tx.getOutput(fundOutIdx).getValue.value
 
-  def replaceDummyOnce(realScript: BinaryData) = {
+  def replaceDummy(realScript: BinaryData) = {
     val realOut = new TransactionOutput(app.params, null, Coin valueOf fundingAmountSat, realScript)
-    val withReplacedDummy = unsigned.tx.getOutputs.asScala.patch(fundOutIdx, List(realOut), 1)
+    val withReplacedDummy = unsigned.tx.getOutputs.asScala.patch(fundOutIdx, List(realOut), replaced = 1)
 
     unsigned.tx.clearOutputs
     // First remove all existing outs, then fill in updated
@@ -37,11 +35,13 @@ case class Batch(unsigned: SendRequest, dummyScript: BinaryData, pr: PaymentRequ
     unsigned
   }
 
-  def asString(text: Int) = {
-    val onchain = coloredOut apply pr.amount.get
+  def asString(source: Int) = {
+    val base = app getString source
+    val request = getDescription(pr.description)
+    val onchainSum = coloredOut apply pr.amount.get
     val onchainFee = coloredOut apply unsigned.tx.getFee
     val channelSum = coloredIn apply Satoshi(fundingAmountSat)
-    app.getString(text).format(onchain, channelSum, onchainFee).html
+    base.format(request, onchainSum, channelSum, onchainFee).html
   }
 }
 

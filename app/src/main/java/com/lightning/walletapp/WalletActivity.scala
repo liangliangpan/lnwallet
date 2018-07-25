@@ -12,13 +12,14 @@ import com.lightning.walletapp.ln.LNParams._
 import com.lightning.walletapp.Denomination._
 import android.support.v4.view.MenuItemCompat._
 import com.lightning.walletapp.lnutils.JsonHttpUtils._
+import com.lightning.walletapp.lnutils.ImplicitJsonFormats._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
 
 import scala.util.{Failure, Try}
 import fr.acinq.bitcoin.{MilliSatoshi, Satoshi}
+import org.bitcoinj.core.{Address, Batch, TxWrap}
 import com.lightning.walletapp.ln.wire.{NodeAnnouncement, Started}
 import com.lightning.walletapp.lnutils.IconGetter.{bigFont, scrWidth}
-import com.lightning.walletapp.lnutils.ImplicitJsonFormats.refundingDataFmt
 import com.lightning.walletapp.lnutils.olympus.OlympusWrap
 import android.support.v4.app.FragmentStatePagerAdapter
 import org.ndeftools.util.activity.NfcReaderActivity
@@ -29,7 +30,6 @@ import org.bitcoinj.store.SPVBlockStore
 import android.text.format.DateFormat
 import org.bitcoinj.uri.BitcoinURI
 import java.text.SimpleDateFormat
-import org.bitcoinj.core.Address
 import org.ndeftools.Message
 import android.os.Bundle
 import java.util.Date
@@ -135,19 +135,22 @@ class WalletActivity extends NfcReaderActivity with ScanActivity { me =>
 
   def checkTransData = {
     returnToBase(view = null)
-    app.TransData.value match {
-      case bu: BitcoinURI => FragWallet.worker.sendBtcPopup(bu.getAddress)(none) setSum Try(bu.getAmount)
+    app.TransData checkAndMaybeErase {
+      case _: Started => me goTo classOf[LNStartActivity]
+      case _: NodeAnnouncement => me goTo classOf[LNStartFundActivity]
       case onChainAddress: Address => FragWallet.worker.sendBtcPopup(onChainAddress)(none)
+      case uri: BitcoinURI => FragWallet.worker.sendBtcPopup(uri.getAddress)(none) setSum Try(uri.getAmount)
+      case pr: PaymentRequest if app.ChannelManager.notClosingOrRefunding.isEmpty => offerBatch(pr)
       case pr: PaymentRequest => FragWallet.worker sendPayment pr
       case FragWallet.REDIRECT => goChanDetails(null)
       case _ =>
     }
+  }
 
-    app.TransData.value match {
-      case _: NodeAnnouncement => me goTo classOf[LNStartFundActivity]
-      case _: Started => me goTo classOf[LNStartActivity]
-      case _ => app.TransData.value = null
-    }
+  def offerBatch(pr: PaymentRequest) = {
+    val batchTry: Try[Batch] = TxWrap findBestBatch pr
+    batchTry.foreach(batch => app.TransData.value = batch)
+    me goTo classOf[LNStartActivity]
   }
 
   // BUTTONS REACTIONS
@@ -207,7 +210,8 @@ class WalletActivity extends NfcReaderActivity with ScanActivity { me =>
     }
   }
 
-  def goChanDetails(top: View) = {
+  def goChanDetails(top: View): Unit = {
+    // Always return Unit to prevent DoNotEraseValue
     val nothingToShow = app.ChannelManager.all.isEmpty
     if (nothingToShow) app toast ln_receive_nochan
     else me goTo classOf[LNOpsActivity]

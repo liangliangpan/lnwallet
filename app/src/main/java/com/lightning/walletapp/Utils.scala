@@ -31,8 +31,8 @@ import android.os.Bundle
 
 import android.content.DialogInterface.{BUTTON_NEUTRAL, BUTTON_POSITIVE, BUTTON_NEGATIVE}
 import com.lightning.walletapp.lnutils.IconGetter.{scrWidth, maxDialog}
+import com.lightning.walletapp.ln.Tools.{none, wrap, runAnd}
 import org.bitcoinj.wallet.SendRequest.{emptyWallet, to}
-import com.lightning.walletapp.ln.Tools.{none, wrap}
 import R.id.{typeCNY, typeEUR, typeJPY, typeUSD}
 import org.bitcoinj.wallet.{SendRequest, Wallet}
 import scala.util.{Failure, Success, Try}
@@ -59,6 +59,7 @@ object Utils {
   lazy val app = appReference
   lazy val sumIn = app getString txs_sum_in
   lazy val sumOut = app getString txs_sum_out
+  lazy val noDesc = app getString ln_no_description
   lazy val denoms = List(SatDenomination, FinDenomination, BtcDenomination)
   val coloredOut: MilliSatoshi => String = amt => sumOut.format(denom withSign amt)
   val coloredIn: MilliSatoshi => String = amt => sumIn.format(denom withSign amt)
@@ -70,6 +71,7 @@ object Utils {
   val fiatMap = Map(typeUSD -> strDollar, typeEUR -> strEuro, typeJPY -> strYen, typeCNY -> strYuan)
   val revFiatMap = Map(strDollar -> typeUSD, strEuro -> typeEUR, strYen -> typeJPY, strYuan -> typeCNY)
   def humanNode(key: String, sep: String) = key.grouped(24).map(_ grouped 3 mkString "\u0020") mkString sep
+  def getDescription(rawText: String) = if (rawText.isEmpty) s"<i>$noDesc</i>" else rawText take 140
   def humanSix(adr: String) = adr grouped 6 mkString "\u0020"
 
   def clickableTextField(view: View): TextView = {
@@ -93,9 +95,23 @@ object Utils {
 }
 
 trait TimerActivity extends AppCompatActivity { me =>
-  val goTo: Class[_] => Unit = me startActivity new Intent(me, _)
-  val exitTo: Class[_] => Unit = goto => wrap(finish)(goTo apply goto)
+  override def onDestroy = wrap(super.onDestroy)(timer.cancel)
+  override def onCreate(savedActivityInstanceState: Bundle) = {
+    Thread setDefaultUncaughtExceptionHandler new UncaughtHandler(me)
+    super.onCreate(savedActivityInstanceState)
+    INIT(savedActivityInstanceState)
+  }
+
   val timer = new Timer
+  val goTo: Class[_] => Any = target => {
+    me startActivity new Intent(this, target)
+    app.TransData.DoNotEraseValue
+  }
+
+  val exitTo: Class[_] => Any = target => {
+    me startActivity new Intent(this, target)
+    runAnd(app.TransData.DoNotEraseValue)(finish)
+  }
 
   def finishMe(top: View) = finish
   def delayUI(fun: TimerTask) = timer.schedule(fun, 225)
@@ -148,13 +164,6 @@ trait TimerActivity extends AppCompatActivity { me =>
   }
 
   def INIT(savedInstanceState: Bundle): Unit
-  override def onCreate(savedActivityInstanceState: Bundle) = {
-    Thread setDefaultUncaughtExceptionHandler new UncaughtHandler(me)
-    super.onCreate(savedActivityInstanceState)
-    INIT(savedActivityInstanceState)
-  }
-
-  override def onDestroy = wrap(super.onDestroy)(timer.cancel)
   implicit def str2View(textFieldData: CharSequence): LinearLayout = {
     val view = getLayoutInflater.inflate(R.layout.frag_top_tip, null).asInstanceOf[LinearLayout]
     val contentTextField = Utils clickableTextField view.findViewById(R.id.titleTip)

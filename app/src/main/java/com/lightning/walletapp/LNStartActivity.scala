@@ -50,52 +50,78 @@ class LNStartActivity extends ScanActivity { me =>
 
   def checkTransData = {
     returnToBase(view = null)
-    app.TransData.value match {
-      case strt: Started => FragLNStart.fragment.spawnExternalFunder(strt)
-      case _: NodeAnnouncement => me goTo classOf[LNStartFundActivity]
-      case _: PaymentRequest => me exitTo classOf[WalletActivity]
-      case _: BitcoinURI => me exitTo classOf[WalletActivity]
+    app.TransData checkAndMaybeErase {
       case _: Address => me exitTo classOf[WalletActivity]
-      case _ => app.TransData.value = null
+      case _: BitcoinURI => me exitTo classOf[WalletActivity]
+      case _: PaymentRequest => me exitTo classOf[WalletActivity]
+      case _: NodeAnnouncement => me goTo classOf[LNStartFundActivity]
+      case started: Started => FragLNStart.fragment.setExternalFunder(started)
+      case batch: Batch => FragLNStart.fragment.setBatchMode(batch)
+      case _ => FragLNStart.fragment.setNormalMode(null)
     }
   }
 }
 
 object FragLNStart {
   var fragment: FragLNStart = _
+  var batchOpt = Option.empty[Batch]
 }
 
 class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
-  override def onDestroy = wrap(super.onDestroy) { for (wsw <- ExternalFunder.worker) ExternalFunder disconnectWSWrap wsw }
+  def rmCurrentRemoteFunder = for (currentWSWrap <- ExternalFunder.worker) ExternalFunder disconnectWSWrap currentWSWrap
   override def onCreateView(inf: LayoutInflater, vg: ViewGroup, bn: Bundle) = inf.inflate(R.layout.frag_ln_start, vg, false)
-  lazy val host: LNStartActivity = me.getActivity.asInstanceOf[LNStartActivity]
 
-  var spawnExternalFunder: Started => Unit = none
+  override def onDestroy = {
+    FragLNStart.batchOpt = None
+    rmCurrentRemoteFunder
+    super.onDestroy
+  }
+
+  var setBatchMode: Batch => Unit = none
+  var setNormalMode: FragLNStart => Unit = none
+  var setExternalFunder: Started => Unit = none
+  lazy val host = me.getActivity.asInstanceOf[LNStartActivity]
+  private[this] var nodes = Vector.empty[StartNodeView]
+  private[this] var nodeWorker: NodeWorker = _
+
+  val adapter = new BaseAdapter {
+    def getView(pos: Int, savedView: View, par: ViewGroup) = {
+      val slot = host.getLayoutInflater.inflate(R.layout.frag_single_line, null)
+      val textLine = slot.findViewById(R.id.textLine).asInstanceOf[TextView]
+      textLine setText getItem(pos).asString(nodeView, "\u0020").html
+      slot
+    }
+
+    def getItem(position: Int) = nodes(position)
+    def getItemId(position: Int) = position
+    def getCount = nodes.size
+  }
+
+  def onNodeSelected(pos: Int): Unit = {
+    app.TransData.value = adapter getItem pos
+    host goTo classOf[LNStartFundActivity]
+  }
+
+  abstract class NodeWorker
+  extends ThrottledWork[String, AnnounceChansNumVec] {
+    def error(searchError: Throwable) = Tools errlog searchError
+    def process(userQuery: String, results: AnnounceChansNumVec) = {
+      nodes = for (announce <- results) yield RemoteNodeView(announce)
+      host.UITask(adapter.notifyDataSetChanged).run
+    }
+  }
+
   override def onViewCreated(view: View, state: Bundle) = {
-    val lnStartNodesList = view.findViewById(R.id.lnStartNodesList).asInstanceOf[ListView]
     val externalFundInfo = view.findViewById(R.id.externalFundInfo).asInstanceOf[TextView]
     val externalFundCancel = view.findViewById(R.id.externalFundCancel).asInstanceOf[Button]
     val externalFundWrap = view.findViewById(R.id.externalFundWrap).asInstanceOf[LinearLayout]
+
+    val batchPresentInfo = view.findViewById(R.id.batchPresentInfo).asInstanceOf[TextView]
+    val batchPresentCancel = view.findViewById(R.id.batchPresentCancel).asInstanceOf[Button]
+    val batchPresentWrap = view.findViewById(R.id.batchPresentWrap).asInstanceOf[LinearLayout]
+
+    val lnStartNodesList = view.findViewById(R.id.lnStartNodesList).asInstanceOf[ListView]
     val toolbar = view.findViewById(R.id.toolbar).asInstanceOf[android.support.v7.widget.Toolbar]
-    var nodes = Vector.empty[StartNodeView]
-
-    val adapter = new BaseAdapter {
-      def getView(pos: Int, savedView: View, par: ViewGroup) = {
-        val slot = host.getLayoutInflater.inflate(R.layout.frag_single_line, null)
-        val textLine = slot.findViewById(R.id.textLine).asInstanceOf[TextView]
-        textLine setText getItem(pos).asString(nodeView, "\u0020").html
-        slot
-      }
-
-      def getItem(position: Int) = nodes(position)
-      def getItemId(position: Int) = position
-      def getCount = nodes.size
-    }
-
-    def onSelect(pos: Int) = {
-      app.TransData.value = adapter getItem pos
-      host goTo classOf[LNStartFundActivity]
-    }
 
     def funderInfo(wrk: WSWrap, color: Int, text: Int) = host UITask {
       val humanAmountSum = denom withSign wrk.params.start.fundingAmount
@@ -108,11 +134,8 @@ class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
         humanExpiry, humanAmountSum, humanFeeSum).html
     }
 
-    spawnExternalFunder = started => {
+    setExternalFunder = started => {
       val freshWSWrap = WSWrap(started)
-      val disconnect = host.onButtonTap(ExternalFunder disconnectWSWrap freshWSWrap)
-      funderInfo(freshWSWrap, R.color.material_blue_grey_800, ex_fund_connecting).run
-      externalFundCancel setOnClickListener disconnect
 
       val err2String =
         Map(FAIL_VERIFY_ERROR -> err_fund_verify_error)
@@ -131,7 +154,6 @@ class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
       }
 
       freshWSWrap.listeners += new ExternalFunderListener {
-        // First we disconnect on fail, then react to that event
         override def onMessage(message: FundMsg) = message match {
           case _: Fail => ExternalFunder disconnectWSWrap freshWSWrap
           case _ => Tools log s"Websocket got $message"
@@ -144,27 +166,51 @@ class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
         }
       }
 
-      // Try to connect and clear TransData
+      // Try to connect a Funder and remove any Batch info if it was present before
+      funderInfo(freshWSWrap, R.color.material_blue_grey_800, ex_fund_connecting).run
       ExternalFunder setWSWrap freshWSWrap
-      app.TransData.value = null
+      setNormalMode(me)
     }
 
-    new ThrottledWork[String, AnnounceChansNumVec] {
-      def work(userQuery: String) = findNodes(userQuery)
-      def error(error: Throwable) = Tools errlog error
-      me.react = addWork
+    setNormalMode = frag => {
+      // Hide a batch funding notification
+      batchPresentWrap setVisibility View.GONE
+      FragLNStart.batchOpt = None
 
-      def process(userQuery: String, res: AnnounceChansNumVec) = {
-        nodes = for (announce <- res) yield RemoteNodeView(announce)
-        host.UITask(adapter.notifyDataSetChanged).run
+      nodeWorker = new NodeWorker {
+        // Search for just user query text
+        def work(ask: String) = findNodes(ask)
+        // Connect worker to search
+        me.react = addWork
       }
     }
 
+    setBatchMode = batch => {
+      FragLNStart.batchOpt = Some(batch)
+      val info = app getString ln_open_batch_inform
+      batchPresentWrap setVisibility View.VISIBLE
+      batchPresentInfo setText info.html
+
+      nodeWorker = new NodeWorker {
+        def work(ask: String) = for {
+          payee <- findNodes(batch.pr.nodeId.toString)
+          searchResultNodes <- findNodes(ask)
+        } yield payee ++ searchResultNodes
+        // Connect worker to search
+        me.react = addWork
+      }
+    }
+
+    // Wire up all tappable elements
+    batchPresentCancel setOnClickListener host.onButtonTap(setNormalMode apply me)
+    externalFundCancel setOnClickListener host.onButtonTap(rmCurrentRemoteFunder)
+    lnStartNodesList setOnItemClickListener host.onTap(onNodeSelected)
+
+    // Init
     FragLNStart.fragment = me
     host.setSupportActionBar(toolbar)
     host.getSupportActionBar.setTitle(action_ln_open)
     host.getSupportActionBar.setSubtitle(ln_status_peer)
-    lnStartNodesList.setOnItemClickListener(host onTap onSelect)
     lnStartNodesList.setAdapter(adapter)
     host.checkTransData
     react(new String)
@@ -181,6 +227,7 @@ object StartNodeView {
 
 sealed trait StartNodeView { def asString(base: String, separator: String): String }
 case class HardcodedNodeView(ann: NodeAnnouncement, tip: String) extends StartNodeView {
+  // App suggests a bunch of hardcoded and separately fetched nodes with a good liquidity
 
   def asString(base: String, separator: String) = {
     val key = humanNode(ann.nodeId.toString, separator)
@@ -188,9 +235,8 @@ case class HardcodedNodeView(ann: NodeAnnouncement, tip: String) extends StartNo
   }
 }
 
-// This invariant comes as a search result from Olympus server queries
-// present Batch indicates that channel is going to be opened using a batched on/off-chain tx
-case class RemoteNodeView(acn: AnnounceChansNum, batch: Option[Batch] = None) extends StartNodeView {
+case class RemoteNodeView(acn: AnnounceChansNum) extends StartNodeView {
+  // User may search for every currently available node on Olympus server
 
   def asString(base: String, separator: String) = {
     val channelAnnouncement \ channelConnections = acn

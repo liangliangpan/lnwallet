@@ -15,7 +15,6 @@ import com.lightning.walletapp.ln.Channel._
 import com.lightning.walletapp.ln.LNParams._
 import com.lightning.walletapp.Denomination._
 import com.lightning.walletapp.ln.PaymentInfo._
-import com.lightning.walletapp.lnutils.JsonHttpUtils._
 import com.lightning.walletapp.lnutils.ImplicitJsonFormats._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
 
@@ -23,16 +22,15 @@ import android.os.{Bundle, Handler}
 import scala.util.{Failure, Success, Try}
 import org.bitcoinj.wallet.{SendRequest, Wallet}
 import android.database.{ContentObserver, Cursor}
+import fr.acinq.bitcoin.{BinaryData, Crypto, MilliSatoshi}
 import com.lightning.walletapp.helper.{ReactLoader, RichCursor}
 import org.bitcoinj.core.Transaction.{MIN_NONDUST_OUTPUT => MIN}
-import fr.acinq.bitcoin.{BinaryData, Crypto, MilliSatoshi, Satoshi}
 import com.lightning.walletapp.ln.Tools.{none, random, runAnd, wrap}
 import org.bitcoinj.core.TransactionConfidence.ConfidenceType.DEAD
 import org.bitcoinj.core.listeners.PeerDisconnectedEventListener
 import org.bitcoinj.core.listeners.PeerConnectedEventListener
 import com.lightning.walletapp.ln.RoutingInfoTag.PaymentRoute
 import android.support.v4.app.LoaderManager.LoaderCallbacks
-import com.lightning.walletapp.lnutils.olympus.OlympusWrap
 import com.lightning.walletapp.lnutils.IconGetter.isTablet
 import org.bitcoinj.wallet.SendRequest.childPaysForParent
 import android.support.v4.content.Loader
@@ -60,7 +58,6 @@ class FragWallet extends Fragment {
 class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar with HumanTimeDisplay { me =>
   import host.{UITask, onButtonTap, showForm, negBuilder, baseBuilder, negTextBuilder, onFastTap, str2View, onTap}
   import host.{onFail, TxProcessor, getSupportLoaderManager, mkCheckForm, rm, mkCheckFormNeutral, <, showDenomChooser}
-  def getDescription(rawText: String) = if (rawText.isEmpty) s"<i>$noDesc</i>" else rawText take 140
 
   val mnemonicWarn = frag.findViewById(R.id.mnemonicWarn).asInstanceOf[LinearLayout]
   val customTitle = frag.findViewById(R.id.customTitle).asInstanceOf[TextView]
@@ -80,7 +77,6 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
   val statusConnecting = app getString btc_status_connecting
   val lnTitleOut = app getString ln_outgoing_title
   val lnTitleIn = app getString ln_incoming_title
-  val noDesc = app getString ln_no_description
   val btcEmpty = app getString btc_empty
   val lnEmpty = app getString ln_empty
   val lnProof = app getString ln_proof
@@ -405,9 +401,14 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
   // LN STUFF
 
   val chanListener = new ChannelListener {
-    // Updates UI on transitions and informs user on errors, should be removed once activity is destroyed
-    override def onProcessSuccess = { case (_, _, remote: wire.Error) => host onFail remote.exception.getMessage }
+    // Just update title on all channel state updates
     override def onBecome = { case _ => updTitle.run }
+
+    override def onProcessSuccess = {
+      case (_, _, remoteError: wire.Error) =>
+        // Remote peer has sent an Error, show it
+        host onFail remoteError.exception.getMessage
+    }
 
     override def onException = {
       case _ \ CMDAddImpossible(_, code) =>
@@ -472,7 +473,6 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
   def sendPayment(pr: PaymentRequest) =
     if (PaymentRequest.prefixes(chainHash) != pr.prefix) app toast err_general
-    else if (app.ChannelManager.notClosingOrRefunding.isEmpty) offerBatch(pr)
     else if (pr.nodeId == nodePublicKey) app toast err_self_payment
     else if (!pr.isFresh) app toast dialog_pr_expired else {
 
@@ -500,18 +500,11 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
           }
         }
 
-        val text = app.getString(ln_send_title).format(me getDescription pr.description).html
-        mkCheckForm(sendAttempt, none, baseBuilder(text, content), dialog_pay, dialog_cancel)
-        for (senderAskedAmount <- pr.amount) rateManager setSum Try(senderAskedAmount)
+        val text = app getString ln_send_title format getDescription(pr.description)
+        mkCheckForm(sendAttempt, none, baseBuilder(text.html, content), dialog_pay, dialog_cancel)
+        for (askedSum <- pr.amount) rateManager setSum Try(askedSum)
       }
     }
-
-  def offerBatch(pr: PaymentRequest) = {
-    val batchTry: Try[Batch] = TxWrap findBestBatch pr
-    batchTry.map(batch => app.TransData.value = batch)
-    host goTo classOf[LNStartActivity]
-    app toast ln_receive_nochan
-  }
 
   def doSend(rd: RoutingData) =
     app.ChannelManager checkIfSendable rd match {
@@ -524,11 +517,11 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
   // BTC SEND AND BOOST
 
   def onChainRunnable(pr: PaymentRequest) =
-    for (adr: String <- pr.fallbackAddress) yield UITask {
-      val fallbackAddress = Address.fromString(app.params, adr)
+    for (adr <- pr.fallbackAddress) yield UITask {
+      val fallback = Address.fromString(app.params, adr)
       val tryMSat = Try(pr.amount.get)
 
-      sendBtcPopup(fallbackAddress) { txid =>
+      sendBtcPopup(fallback) { txj =>
         // Hide off-chain payment once on-chain is sent
         PaymentInfoWrap.updStatus(HIDDEN, pr.paymentHash)
         PaymentInfoWrap.uiNotify
@@ -550,7 +543,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
       val pay = AddrData(ms, addr)
       def retry = sendBtcPopup(addr)(and)
       def onTxFail(sendingError: Throwable) = {
-        val bld = baseBuilder(messageWhenMakingTx(sendingError), null)
+        val bld = baseBuilder(title = messageWhenMakingTx(sendingError), null)
         mkCheckForm(alert => rm(alert)(retry), none, bld, dialog_retry, dialog_cancel)
       }
     }
