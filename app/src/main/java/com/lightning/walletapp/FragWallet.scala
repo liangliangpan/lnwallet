@@ -212,6 +212,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
     def generatePopup = {
       val inFiat = msatInFiatHuman apply info.firstSum
+      val noResource = if (info.pr.isFresh) dialog_retry else -1
       val rd = emptyRD(info.pr, info.firstMsat, useCache = false)
       val humanStatus = s"<strong>${paymentStates apply info.actualStatus}</strong>"
       val detailsWrapper = host.getLayoutInflater.inflate(R.layout.frag_tx_ln_details, null)
@@ -253,14 +254,14 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
           val bld = baseBuilder(outgoingTitle.html, detailsWrapper)
           // We have a fallback onchain address so display it if payment was not successfull
           if (info.actualStatus != FAILURE) showForm(negBuilder(dialog_ok, outgoingTitle.html, detailsWrapper).create)
-          else mkCheckFormNeutral(alert => rm(alert)(none), doSend(rd), alert => rm(alert)(runnable.run), bld, dialog_ok,
-            noResource = if (info.pr.isFresh) dialog_retry else -1, dialog_pay_onchain)
+          else mkCheckFormNeutral(alert => rm(alert)(none), doSend(rd), alert => rm(alert)(runnable.run), bld,
+            dialog_ok, noResource, dialog_pay_onchain)
 
         case 0 \ _ =>
           // Allow user to retry this payment while using excluded nodes and channels
           if (info.actualStatus != FAILURE) showForm(negBuilder(dialog_ok, outgoingTitle.html, detailsWrapper).create)
-          else mkCheckForm(alert => rm(alert)(none), doSend(rd), baseBuilder(outgoingTitle.html, detailsWrapper), dialog_ok,
-            noResource = if (info.pr.isFresh) dialog_retry else -1)
+          else mkCheckForm(alert => rm(alert)(none), doSend(rd), baseBuilder(outgoingTitle.html, detailsWrapper),
+            dialog_ok, noResource)
 
         case 1 \ _ =>
           // This is an incoming payment

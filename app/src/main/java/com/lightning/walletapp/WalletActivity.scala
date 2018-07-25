@@ -140,14 +140,14 @@ class WalletActivity extends NfcReaderActivity with ScanActivity { me =>
       case _: NodeAnnouncement => me goTo classOf[LNStartFundActivity]
       case onChainAddress: Address => FragWallet.worker.sendBtcPopup(onChainAddress)(none)
       case uri: BitcoinURI => FragWallet.worker.sendBtcPopup(uri.getAddress)(none) setSum Try(uri.getAmount)
-      case pr: PaymentRequest if app.ChannelManager.notClosingOrRefunding.isEmpty => offerBatch(pr)
+      case pr: PaymentRequest if app.ChannelManager.notClosingOrRefunding.isEmpty => maybeOfferBatch(pr)
       case pr: PaymentRequest => FragWallet.worker sendPayment pr
       case FragWallet.REDIRECT => goChanDetails(null)
       case _ =>
     }
   }
 
-  def offerBatch(pr: PaymentRequest) = {
+  def maybeOfferBatch(pr: PaymentRequest) = {
     val batchTry: Try[Batch] = TxWrap findBestBatch pr
     batchTry.foreach(batch => app.TransData.value = batch)
     me goTo classOf[LNStartActivity]
@@ -206,6 +206,7 @@ class WalletActivity extends NfcReaderActivity with ScanActivity { me =>
     }
 
     def scanQR = rm(alert) {
+      // Just jump to QR scanner section
       walletPager.setCurrentItem(1, true)
     }
   }
