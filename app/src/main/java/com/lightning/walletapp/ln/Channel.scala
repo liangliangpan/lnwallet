@@ -67,8 +67,8 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
         if (accept.maxAcceptedHtlcs > 483) throw new LightningException("They can accept too many payments")
         if (accept.htlcMinimumMsat > 10000L) throw new LightningException("Their htlcMinimumMsat too high")
         if (accept.maxAcceptedHtlcs < 1) throw new LightningException("They can accept too few payments")
+        if (accept.toSelfDelay > 14 * 144) throw new LightningException("Their toSelfDelay is too high")
         if (accept.minimumDepth > 6L) throw new LightningException("Their minimumDepth is too high")
-        if (accept.toSelfDelay > 2016) throw new LightningException("Their toSelfDelay is too high")
         BECOME(WaitFundingData(announce, cmd, accept), WAIT_FOR_FUNDING)
 
 
@@ -601,7 +601,6 @@ object Channel {
   } getOrElse 0L
 
   def estimateCanSend(chan: Channel) = chan(_.reducedRemoteState.canSendMsat) getOrElse 0L
-  def estimateCanSendCapped(chan: Channel) = math.min(estimateCanSend(chan), LNParams.maxHtlcValueMsat)
   def isOperational(chan: Channel) = chan.data match { case NormalData(_, _, None, None) => true case _ => false }
   def isOpening(chan: Channel) = chan.data.isInstanceOf[WaitFundingDoneData] || chan.data.isInstanceOf[WaitBroadcastRemoteData]
   def inFlightHtlcs(chan: Channel) = chan(Commitments.latestRemoteCommit(_).spec.htlcs) getOrElse Set.empty

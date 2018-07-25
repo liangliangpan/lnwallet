@@ -483,8 +483,9 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
       if (operationalChannels.isEmpty && openingChannels.nonEmpty) onFail(app getString err_ln_still_opening)
       else if (operationalChannels.isEmpty) app toast ln_receive_nochan else {
 
+        val maxCanSendUncapped = operationalChannels.map(estimateCanSend).max
+        val maxCanSend = MilliSatoshi apply math.min(maxCanSendUncapped, LNParams.maxHtlcValueMsat)
         val content = host.getLayoutInflater.inflate(R.layout.frag_input_fiat_converter, null, false)
-        val maxCanSend = MilliSatoshi(operationalChannels.map(estimateCanSendCapped).max)
         val hint = app.getString(amount_hint_can_send).format(denom withSign maxCanSend)
         val rateManager = new RateManager(hint, content)
 

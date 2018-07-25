@@ -96,55 +96,40 @@ case class ClosingData(announce: NodeAnnouncement,
       remoteCommit.map(_.commitTx) ++
       nextRemoteCommit.map(_.commitTx)
 
-  lazy val frozenPublishedHashes =
-    localCommit.flatMap(_.frozenHashes) ++
-      remoteCommit.flatMap(_.frozenHashes) ++
-      nextRemoteCommit.flatMap(_.frozenHashes)
+  def tier12States = realTier12Closings.flatMap(_.getState)
+  private lazy val mutualWrappers = mutualClose map MutualCommitPublished
+  lazy val frozenPublishedHashes = realTier12Closings.flatMap(_.frozenHashes)
+  lazy val realTier12Closings = revokedCommit ++ localCommit ++ remoteCommit ++
+    nextRemoteCommit ++ refundRemoteCommit
 
-  def tier12States =
-    revokedCommit.flatMap(_.getState) ++ localCommit.flatMap(_.getState) ++
-      remoteCommit.flatMap(_.getState) ++ nextRemoteCommit.flatMap(_.getState) ++
-      refundRemoteCommit.flatMap(_.getState)
-
-  def bestClosing = {
-    val allClosings = mutualClose.map(Left.apply) ++
-      revokedCommit.map(Right.apply) ++ localCommit.map(Right.apply) ++
-        remoteCommit.map(Right.apply) ++ nextRemoteCommit.map(Right.apply) ++
-        refundRemoteCommit.map(Right.apply)
-
-    allClosings maxBy {
-      case Left(mutualTx) => getStatus(mutualTx.txid) match { case cfs \ _ => cfs }
-      case Right(info) => getStatus(info.commitTx.txid) match { case cfs \ _ => cfs }
-    }
-  }
-
-  def isOutdated = {
-    val allConfirmedOrDead = bestClosing match {
-      case Left(mutualTx) => getStatus(mutualTx.txid) match { case cfs \ isDead => cfs > minDepth || isDead }
-      case Right(info) => info.getState.map(_.txn.txid).map(getStatus) forall { case cfs \ isDead => cfs > minDepth || isDead }
+  def bestClosing: CommitPublished =
+    // At least one closing is guaranteed to be here
+    mutualWrappers ++ realTier12Closings maxBy { info =>
+      val confirmations \ isDead = getStatus(info.commitTx.txid)
+      if (isDead) -confirmations else confirmations
     }
 
-    val hardDelay: Long = closedAt + 1000L * 3600 * 24 * 30
-    allConfirmedOrDead || hardDelay < System.currentTimeMillis
+  def isOutdated: Boolean = {
+    val hardDelay = closedAt + 1000L * 3600 * 24 * 28 < System.currentTimeMillis
+    val bestDepth \ bestDead = getStatus(bestClosing.commitTx.txid)
+    bestDepth > minDepth || bestDead || hardDelay
   }
 }
 
 sealed trait CommitPublished {
-  def getState: Seq[PublishStatus]
+  def frozenHashes: Seq[BinaryData] = Nil
+  def getState: Seq[PublishStatus] = Nil
   val commitTx: Transaction
 }
 
-sealed trait FrozenHashProvider {
-  def frozenHashes: Seq[BinaryData]
-}
+case class LocalCommitPublished(claimMainDelayed: Seq[ClaimDelayedOutputTx], claimHtlcSuccess: Seq[SuccessAndClaim],
+                                claimHtlcTimeout: Seq[TimeoutAndClaim], commitTx: Transaction) extends CommitPublished {
 
-case class LocalCommitPublished(claimMainDelayed: Seq[ClaimDelayedOutputTx],
-                                claimHtlcSuccess: Seq[SuccessAndClaim], claimHtlcTimeout: Seq[TimeoutAndClaim],
-                                commitTx: Transaction) extends CommitPublished with FrozenHashProvider {
+  override def frozenHashes = for {
+    claimTimeout \ _ <- claimHtlcTimeout
+  } yield claimTimeout.add.paymentHash
 
-  def frozenHashes = for (t1 \ _ <- claimHtlcTimeout) yield t1.add.paymentHash
-
-  def getState = {
+  override def getState = {
     val success = for (t1 \ t2 <- claimHtlcSuccess) yield HideReady(t1.tx) :: csvShowDelayed(t1, t2) :: Nil
     val timeout = for (t1 \ t2 <- claimHtlcTimeout) yield HideDelayed(cltv(commitTx, t1.tx), t1.tx) :: csvShowDelayed(t1, t2) :: Nil
     val main = for (t1 <- claimMainDelayed) yield ShowDelayed(csv(commitTx, t1.tx), t1.tx, t1 -- t1, t1.tx.allOutputsAmount) :: Nil
@@ -152,13 +137,15 @@ case class LocalCommitPublished(claimMainDelayed: Seq[ClaimDelayedOutputTx],
   }
 }
 
-case class RemoteCommitPublished(claimMain: Seq[ClaimP2WPKHOutputTx],
-                                 claimHtlcSuccess: Seq[ClaimHtlcSuccessTx], claimHtlcTimeout: Seq[ClaimHtlcTimeoutTx],
-                                 commitTx: Transaction) extends CommitPublished with FrozenHashProvider {
+case class RemoteCommitPublished(claimMain: Seq[ClaimP2WPKHOutputTx], claimHtlcSuccess: Seq[ClaimHtlcSuccessTx],
+                                 claimHtlcTimeout: Seq[ClaimHtlcTimeoutTx], commitTx: Transaction) extends CommitPublished {
 
-  def frozenHashes = for (ClaimHtlcTimeoutTx(Some(add), _, _) <- claimHtlcTimeout) yield add.paymentHash
+  override def frozenHashes = for {
+    claimTimeout <- claimHtlcTimeout
+    add <- claimTimeout.addOpt
+  } yield add.paymentHash
 
-  def getState = {
+  override def getState = {
     val timeout = for (t1 <- claimHtlcTimeout) yield ShowDelayed(cltv(commitTx, t1.tx), t1.tx, t1 -- t1, t1.tx.allOutputsAmount)
     val success = for (t1 <- claimHtlcSuccess) yield ShowReady(t1.tx, t1 -- t1, t1.tx.allOutputsAmount)
     val main = for (t1 <- claimMain) yield ShowReady(t1.tx, t1 -- t1, t1.tx.allOutputsAmount)
@@ -166,10 +153,11 @@ case class RemoteCommitPublished(claimMain: Seq[ClaimP2WPKHOutputTx],
   }
 }
 
+case class MutualCommitPublished(commitTx: Transaction) extends CommitPublished
 case class RevokedCommitPublished(claimMain: Seq[ClaimP2WPKHOutputTx], claimTheirMainPenalty: Seq[MainPenaltyTx],
                                   htlcPenalty: Seq[HtlcPenaltyTx], commitTx: Transaction) extends CommitPublished {
 
-  def getState = {
+  override def getState = {
     val main = for (t1 <- claimMain) yield ShowReady(t1.tx, t1 -- t1, t1.tx.allOutputsAmount)
     val their = for (t1 <- claimTheirMainPenalty) yield ShowReady(t1.tx, t1 -- t1, t1.tx.allOutputsAmount)
     val penalty = for (t1 <- htlcPenalty) yield ShowReady(t1.tx, t1 -- t1, t1.tx.allOutputsAmount)

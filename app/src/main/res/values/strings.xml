@@ -26,8 +26,8 @@
         <item>Use migration file</item>
     </array>
 
-    <string name="create_wallet_creating">Generating your wallet\nIt may take up to a few minutes</string>
     <string name="restore_when">When was your wallet created?\nLeave date as is if not sure</string>
+    <string name="create_wallet_creating">Generating your wallet\nIt may take up to a few minutes</string>
     <string name="restore_wallet_restoring">Restoring your wallet\nIt may take a while</string>
     <string name="restore_mnemonic_wrong">Phrase must be 12 words long</string>
     <string name="restore_hint">Your BIP32 mnemonic phrase</string>
@@ -145,7 +145,7 @@
     <string name="ln_receive_title"><![CDATA[<font color=#0099FE><strong>Receive Lightning payment</strong></font>]]></string>
     <string name="ln_receive_option"><![CDATA[<font color=#0099FE>Lightning payment</font><small><br><br>%1$s</small>]]></string>
     <string name="btc_receive_option"><![CDATA[<font color=#FF9900>Bitcoin transaction</font><small><br><br>Make a QR-code with on-chain wallet address, can be used to receive regular Bitcoin transactions</small>]]></string>
-    <string name="ln_receive_6conf">&#9888; Can\'t ask for Lightning payments because your peer is not ready yet. Typically peers become ready once a channel funding Bitcoin transaction gets 6 confirmations</string>
+    <string name="ln_receive_6conf"><![CDATA[&#9888; Can\'t ask for Lightning payments because your peer is not ready yet. Typically peers become ready once a channel funding Bitcoin transaction gets 6 confirmations]]></string>
     <string name="ln_receive_reserve"><![CDATA[&#9888; Can\'t ask for Lightning payments yet because first you need to spend at least %1$s in order to make some space for receiving]]></string>
     <string name="ln_receive_ok">Make a QR-code with a Lightning Payment Request, can be used to receive fast off-chain payments</string>
     <string name="ln_receive_nochan">No payment channels found</string>
@@ -190,14 +190,15 @@
 
     <!-- SPECIFIC TO LIGHTNING NETWORK -->
 
+    <string name="ln_status_peer">Select peer</string>
     <string name="ln_share_hash">Share payment hash</string>
     <string name="ln_share_proof">Share Proof of Payment</string>
-
-    <string name="ln_status_peer">Select peer</string>
     <string name="ln_description_hint">add some description</string>
     <string name="ln_no_description">No description provided</string>
     <string name="ln_proof">Signed payment request: %1$s\n\nPayment preimage: %2$s</string>
     <string name="ln_qr_disposable"><![CDATA[Request is valid for 2 days<br>Do not reuse this QR code]]></string>
+    <string name="notice_sync_body">Please open Bitcoin Lightning Wallet</string>
+    <string name="notice_sync_title">Synchronization required</string>
 
     <!-- see PaymentInfo.scala -->
     <array name="ln_payment_states">
@@ -208,24 +209,11 @@
         <item>failed and frozen</item>
     </array>
 
-    <string name="notice_sync_title">Synchronization required</string>
-    <string name="notice_sync_body">Please open Bitcoin Lightning Wallet</string>
-
-    <string name="ln_ops_chan_basic"><![CDATA[%1$s<br>%2$s<br><br>opened at <font color=#999999>%3$s</font><br>total capacity %4$s]]></string>
-    <string name="ln_ops_chan_negotiations"><![CDATA[<font color=#FF9900>%1$s</font><br>%2$s<br><br>opened at <font color=#999999>%3$s</font><br>total capacity %4$s<br>refundable %5$s<br><br>%6$s]]></string>
-    <string name="ln_ops_chan_unilateral_closing"><![CDATA[%1$s<br>%2$s<br>%3$s<br><br>opened at <font color=#999999>%4$s</font><br>closed at <font color=#999999>%5$s</font><br>total capacity %6$s<br>your balance %7$s<br><br>%8$s]]></string>
-    <string name="ln_ops_chan_bilateral_closing"><![CDATA[%1$s<br><font color=#999999><i>cooperative</i></font><br>%2$s<br><br>opened at <font color=#999999>%3$s</font><br>closed at <font color=#999999>%4$s</font><br>total capacity %5$s<br>refunded %6$s<br><br>%7$s]]></string>
-    <string name="ln_ops_chan_opening"><![CDATA[<font color=#FF9900>%1$s</font><br>%2$s<br><br>opened at <font color=#999999>%3$s</font><br>total capacity %4$s<br>%5$s required<br><br><a href=https://testnet.smartbit.com.au/tx/%6$s>View funding status</a><br>%7$s]]></string>
-
-    <string name="ln_ops_chan_open_no_receive"><![CDATA[<font color=#76B041>%1$s</font><br>%2$s<br><br>capacity %3$s<br>refundable %4$s<br>breaking fee %5$s<br><br>can send %6$s<br><small><font color=#FF9900>receiving not enabled by peer yet</font></small><br>can receive %7$s<br><br>%8$s<br>%9$s<br><small>%10$s sent in total</small>]]></string>
-    <string name="ln_ops_chan_open"><![CDATA[<font color=#76B041>%1$s</font><br>%2$s<br><br>capacity %3$s<br>refundable %4$s<br>breaking fee %5$s<br><br>can send %6$s<br>can receive %7$s<br><br>%8$s<br>%9$s<br><small>%10$s sent in total</small>]]></string>
-
     <string name="ln_chan_close_inflight_details"><![CDATA[&#9888; <font color=#FF9900>Pending payments are present</font> so cooperative closing is going to be postponed until they are resolved<br><br>It it recommended to not close a channel right now and let those stuck payments to eventually become failed or fulfilled, would you still like to proceed?]]></string>
     <string name="ln_chan_force_offline_details"><![CDATA[&#9888; <font color=#FF9900>Channel is offline now</font> so shutting it down will result in a <a href=http://lightning-wallet.com/using-lightning-wallet#forced-channel-closure>forced channel closing</a> which requires additional fees and time<br><br>It is recommended to wait at least one day for a remote peer to get back online before doing this, would you still like to proceed?]]></string>
     <string name="ln_chan_force_details"><![CDATA[&#9888; Note that shutting this channel down right now will result in a <a href=http://lightning-wallet.com/using-lightning-wallet#forced-channel-closure>forced channel closing</a> which requires additional fees and time, would you still like to proceed?]]></string>
-
-    <string name="ln_chan_close_confirm_address"><![CDATA[Do you want to close this channel and send a refunding on-chain transaction to the following address?<br><br>%1$s]]></string>
-    <string name="ln_chan_close_confirm_local">Do you want to close this channel and send a refunding on-chain transaction back to this wallet?</string>
+    <string name="ln_chan_close_confirm_address"><![CDATA[Do you want to close this channel and send a refunding transaction to the following address?<br><br>%1$s]]></string>
+    <string name="ln_chan_close_confirm_local">Do you want to close this channel and send a refunding transaction back to this wallet?</string>
     <string name="ln_chan_actions">Channel actions</string>
     <string name="ln_chan_force">Force close</string>
 
@@ -236,38 +224,10 @@
         <item>Close to this wallet</item>
     </array>
 
-    <string name="ln_ops_chan_amount_status">%1$s - %2$s fee</string>
-    <string name="ln_ops_chan_refund_status"><![CDATA[<br><br><font color=#999999>Pending refunds</font><br>]]></string>
-    <string name="ln_ops_chan_commit_status"><![CDATA[<a href=https://testnet.smartbit.com.au/tx/%1$s>View closing status</a><br>%2$s<br>%3$s fee]]></string>
-
-    <string name="ln_ops_unilateral_you"><![CDATA[<font color=#999999><i>by your wallet</i></font>]]></string>
-    <string name="ln_ops_unilateral_peer"><![CDATA[<font color=#999999><i>by remote peer</i></font>]]></string>
-    <string name="ln_ops_chan_unilateral_status_dead"><![CDATA[%1$s<br>= %2$s cancelled]]></string>
-    <string name="ln_ops_chan_unilateral_status_done"><![CDATA[%1$s<br>= %2$s received]]></string>
-    <string name="ln_ops_chan_unilateral_status_left"><![CDATA[%2$s<br>= %3$s %1$s]]></string>
-
-    <array name="ln_total_payments">
-        <item><![CDATA[No payments sent yet]]></item>
-        <item><![CDATA[%1$s payment sent in total]]></item>
-        <item><![CDATA[%1$s payments sent in total]]></item>
-    </array>
-
-    <array name="ln_status_left_blocks">
-        <item><![CDATA[in progress&#8230;]]></item>
-        <item><![CDATA[in %1$s block]]></item>
-        <item><![CDATA[in %1$s blocks]]></item>
-    </array>
-
     <array name="ln_status_expiry">
         <item><![CDATA[expired, got stuck]]></item>
         <item><![CDATA[expires in %1$s block]]></item>
         <item><![CDATA[expires in %1$s blocks]]></item>
-    </array>
-
-    <array name="ln_in_flight_payments">
-        <item><![CDATA[No payments in-flight]]></item>
-        <item><![CDATA[%1$s payment in-flight]]></item>
-        <item><![CDATA[%1$s payments in-flight]]></item>
     </array>
 
     <!-- opening a new channel -->
