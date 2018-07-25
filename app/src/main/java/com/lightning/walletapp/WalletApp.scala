@@ -66,7 +66,6 @@ class WalletApp extends Application { me =>
   def toast(code: Int): Unit = toast(me getString code)
   def toast(msg: CharSequence): Unit = Toast.makeText(me, msg, Toast.LENGTH_LONG).show
   def clipboardManager = getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[ClipboardManager]
-  def connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE).asInstanceOf[ConnectivityManager]
   def isAlive = if (null == kit) false else kit.state match { case STARTING | RUNNING => null != db case _ => false }
   def plurOrZero(opts: Array[String], number: Long) = if (number > 0) plur(opts, number) format number else opts(0)
   def getBufferTry = Try(clipboardManager.getPrimaryClip.getItemAt(0).getText.toString)
@@ -141,7 +140,8 @@ class WalletApp extends Application { me =>
 
     def updateChangedIPs = for {
       chan <- notClosing if chan.state == OFFLINE
-      netInfo <- Option(connectivityManager.getActiveNetworkInfo) if netInfo.isConnected
+      cm = getSystemService(Context.CONNECTIVITY_SERVICE).asInstanceOf[ConnectivityManager]
+      currentNetworkStatus <- Option(cm.getActiveNetworkInfo) if currentNetworkStatus.isConnected
       res <- retry(OlympusWrap findNodes chan.data.announce.nodeId.toString, pickInc, 2 to 3)
       announce \ _ <- res take 1
     } chan process announce
@@ -211,7 +211,7 @@ class WalletApp extends Application { me =>
       def ASKREFUNDTX(ref: RefundingData) = {
         // Failsafe check in case if we are still in REFUNDING state after app is restarted
         val txsObs = OlympusWrap getChildTxs Seq(ref.commitments.commitInput.outPoint.txid)
-        txsObs.foreach(txs => for (tx <- txs) self process CMDSpent(tx), none)
+        txsObs.foreach(txs => txs map CMDSpent foreach process, none)
       }
 
       def ASKREFUNDPEER(some: HasCommitments, point: Point) = {

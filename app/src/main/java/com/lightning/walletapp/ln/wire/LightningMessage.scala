@@ -80,8 +80,9 @@ case class ChannelReestablish(channelId: BinaryData, nextLocalCommitmentNumber: 
 case class AnnouncementSignatures(channelId: BinaryData, shortChannelId: Long, nodeSignature: BinaryData,
                                   bitcoinSignature: BinaryData) extends RoutingMessage
 
-case class ChannelAnnouncement(nodeSignature1: BinaryData, nodeSignature2: BinaryData, bitcoinSignature1: BinaryData,
-                               bitcoinSignature2: BinaryData, features: BinaryData, chainHash: BinaryData, shortChannelId: Long,
+case class ChannelAnnouncement(nodeSignature1: BinaryData, nodeSignature2: BinaryData,
+                               bitcoinSignature1: BinaryData, bitcoinSignature2: BinaryData,
+                               features: BinaryData, chainHash: BinaryData, shortChannelId: Long,
                                nodeId1: PublicKey, nodeId2: PublicKey, bitcoinKey1: PublicKey,
                                bitcoinKey2: PublicKey) extends RoutingMessage {
 

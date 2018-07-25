@@ -91,16 +91,14 @@ case class ClosingData(announce: NodeAnnouncement,
                        refundRemoteCommit: Seq[RemoteCommitPublished] = Nil, revokedCommit: Seq[RevokedCommitPublished] = Nil,
                        closedAt: Long = System.currentTimeMillis) extends HasCommitments {
 
-  lazy val commitTxs =
-    localCommit.map(_.commitTx) ++
-      remoteCommit.map(_.commitTx) ++
-      nextRemoteCommit.map(_.commitTx)
+  lazy val realTier12Closings =
+    revokedCommit ++ localCommit ++ remoteCommit ++
+      nextRemoteCommit ++ refundRemoteCommit
 
-  def tier12States = realTier12Closings.flatMap(_.getState)
-  private lazy val mutualWrappers = mutualClose map MutualCommitPublished
+  lazy val commitTxs = realTier12Closings.map(_.commitTx)
+  lazy val mutualWrappers = mutualClose map MutualCommitPublished
   lazy val frozenPublishedHashes = realTier12Closings.flatMap(_.frozenHashes)
-  lazy val realTier12Closings = revokedCommit ++ localCommit ++ remoteCommit ++
-    nextRemoteCommit ++ refundRemoteCommit
+  def tier12States: Seq[PublishStatus] = realTier12Closings.flatMap(_.getState)
 
   def bestClosing: CommitPublished =
     // At least one closing is guaranteed to be here

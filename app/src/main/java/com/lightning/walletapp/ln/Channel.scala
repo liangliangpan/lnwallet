@@ -263,7 +263,7 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
         if (expiredPayment.nonEmpty) throw HTLCExpiryException(norm, expiredPayment.get)
 
 
-      // SHUTDOWN in WAIT_FUNDING_DONE and OPEN
+      // SHUTDOWN in WAIT_FUNDING_DONE
 
 
       case (wait: WaitFundingDoneData, CMDShutdown(scriptPubKey), WAIT_FUNDING_DONE) =>
@@ -282,6 +282,9 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
         doProcess(CMDProceed)
 
 
+      // SHUTDOWN in OPEN
+
+
       case (norm @ NormalData(_, commitments, our, their), CMDShutdown(scriptPubKey), OPEN) =>
         // We may have unsigned outgoing HTLCs or already have tried to close this channel cooperatively
         val nope = our.isDefined | their.isDefined | Commitments.localHasUnsignedOutgoing(commitments)
@@ -290,32 +293,35 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
 
 
       // Either they initiate a shutdown or respond to the one we have sent
+      // should sign our unsigned outgoing HTLCs if present and then start shutdown
       case (norm @ NormalData(_, commitments, _, None), remote: Shutdown, OPEN) =>
 
         val d1 = norm.modify(_.remoteShutdown) setTo Some(remote)
-        val nope = Commitments.remoteHasUnsignedOutgoing(commitments)
-        // Can't close cooperatively if they have unsigned outgoing HTLCs
-        // we should clear our unsigned outgoing HTLCs and then start a shutdown
-        if (nope) startLocalClose(norm) else me UPDATA d1 doProcess CMDProceed
+        val canNotShutdown = Commitments.remoteHasUnsignedOutgoing(commitments)
+        if (canNotShutdown) startLocalClose(norm) else me UPDATA d1 doProcess CMDProceed
 
 
-      case (norm @ NormalData(_, commitments, None, their), CMDProceed, OPEN)
-        if inFlightHtlcs(me).isEmpty && their.isDefined =>
+      // We have nothing to sign so check if maybe we are in valid shutdown state
+      case (norm @ NormalData(announce, commitments, our, their), CMDProceed, OPEN)
+        // GUARD: only consider this if we have nothing in-flight
+        if inFlightHtlcs(me).isEmpty =>
 
-        // We have previously received their Shutdown
-        // so we have issued a CMDProceed and are getting it here now
-        // which means we do not have any HTLCs in-flight so can negotiatiate
-        startShutdown(norm, commitments.localParams.defaultFinalScriptPubKey)
-        doProcess(CMDProceed)
+        our -> their match {
+          case Some(ourSig) \ Some(theirSig) =>
+            // Got both shutdowns without HTLCs in-flight so can start negotiations
+            val firstProposed = Closing.makeFirstClosing(commitments, ourSig.scriptPubKey, theirSig.scriptPubKey)
+            val neg = NegotiationsData(announce, commitments, ourSig, theirSig, firstProposed :: Nil)
+            BECOME(me STORE neg, NEGOTIATIONS) SEND firstProposed.localClosingSigned
 
+          case None \ Some(theirSig) =>
+            // We have previously received their Shutdown so can respond
+            // send CMDProceed once to make sure we still have nothing to sign
+            startShutdown(norm, commitments.localParams.defaultFinalScriptPubKey)
+            doProcess(CMDProceed)
 
-      case (NormalData(announce, commitments, our, their), CMDProceed, OPEN)
-        // GUARD: got both shutdowns without HTLCs in-flight so can negotiate
-        if inFlightHtlcs(me).isEmpty && our.isDefined && their.isDefined =>
-
-        val firstProposed = Closing.makeFirstClosing(commitments, our.get.scriptPubKey, their.get.scriptPubKey)
-        val neg = NegotiationsData(announce, commitments, our.get, their.get, firstProposed :: Nil)
-        BECOME(me STORE neg, NEGOTIATIONS) SEND firstProposed.localClosingSigned
+          // Nothing to do here
+          case notReadyYet =>
+        }
 
 
       // SYNC and REFUNDING MODE
@@ -584,7 +590,9 @@ object Channel {
   val WAIT_FOR_ACCEPT = "WAIT-FOR-ACCEPT"
   val WAIT_FOR_FUNDING = "WAIT-FOR-FUNDING"
   val WAIT_FUNDING_SIGNED = "WAIT-FUNDING-SIGNED"
-  val WAIT_FUNDING_DONE = "WAIT-FUNDING-DONE"
+
+  // Operational
+  val WAIT_FUNDING_DONE = "OPENING"
   val NEGOTIATIONS = "NEGOTIATIONS"
   val OFFLINE = "OFFLINE"
   val OPEN = "OPEN"

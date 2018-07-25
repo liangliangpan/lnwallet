@@ -224,6 +224,12 @@
         <item>Close to this wallet</item>
     </array>
 
+    <array name="ln_status_left_blocks">
+        <item><![CDATA[broadcasting]]></item>
+        <item><![CDATA[in %1$s block]]></item>
+        <item><![CDATA[in %1$s blocks]]></item>
+    </array>
+
     <array name="ln_status_expiry">
         <item><![CDATA[expired, got stuck]]></item>
         <item><![CDATA[expires in %1$s block]]></item>
