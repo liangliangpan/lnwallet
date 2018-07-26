@@ -184,8 +184,8 @@ object PaymentInfoWrap extends PaymentInfoBag with ChannelListener { me =>
   }
 
   override def onBecome = {
-    case (chan, _, from, CLOSING) if from != CLOSING =>
-      // Mark dropped and frozen payments and let user know
+    case (chan, _, from, CLOSING) =>
+      // Mark dropped and frozen payments
       markFailedAndFrozen
       uiNotify
 

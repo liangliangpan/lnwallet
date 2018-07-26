@@ -77,6 +77,7 @@ trait PublishStatus {
 trait DelayedPublishStatus extends PublishStatus {
   // Is publishable if parent depth > 0 AND parent is not dead AND no CLTV or CSV delays
   override def isPublishable = parent match { case pd \ false \ 0L => pd > 0L case _ => false }
+  def delay = parent match { case pd \ false \ blocksLeft => blocksLeft case _ => -1L }
   val parent: (DepthAndDead, Long)
 }
 

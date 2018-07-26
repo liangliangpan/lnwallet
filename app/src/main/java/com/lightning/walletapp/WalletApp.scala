@@ -130,9 +130,15 @@ class WalletApp extends Application { me =>
     def notClosing = for (c <- all if c.state != CLOSING) yield c
 
     def onlineReports = for {
+    // Operational channels have commitments by definition
       chan <- all if isOperational(chan) && chan.state == OPEN
-      // Operational channels have commitments by definition
     } yield ChanReport(chan, chan(identity).get)
+
+    def delayedPublishes = {
+      // Select all ShowDelayed which can't be published yet because cltv/csv delay is not cleared
+      val statuses = all.map(_.data).collect { case cd: ClosingData => cd.bestClosing.getState }.flatten
+      statuses.collect { case delayed: ShowDelayed if !delayed.isPublishable => delayed }
+    }
 
     def frozenInFlightHashes = all.map(_.data).collect { case cd: ClosingData => cd.frozenPublishedHashes }.flatten
     def activeInFlightHashes = notClosingOrRefunding.flatMap(inFlightHtlcs).map(htlc => htlc.add.paymentHash)
