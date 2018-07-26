@@ -137,7 +137,7 @@ class WalletApp extends Application { me =>
     def delayedPublishes = {
       // Select all ShowDelayed which can't be published yet because cltv/csv delay is not cleared
       val statuses = all.map(_.data).collect { case cd: ClosingData => cd.bestClosing.getState }.flatten
-      statuses.collect { case delayed: ShowDelayed if !delayed.isPublishable => delayed }
+      statuses.collect { case sd: ShowDelayed if !sd.isPublishable && sd.delay > Long.MinValue => sd }
     }
 
     def frozenInFlightHashes = all.map(_.data).collect { case cd: ClosingData => cd.frozenPublishedHashes }.flatten
@@ -203,7 +203,7 @@ class WalletApp extends Application { me =>
 
     def createChannel(initialListeners: Set[ChannelListener], bootstrap: ChannelData) = new Channel { self =>
       def SEND(m: LightningMessage) = for (w <- ConnectionManager.connections get data.announce.nodeId) w.handler process m
-      def STORE(data: HasCommitments) = runAnd(data)(ChannelWrap put data)
+      def STORE(updatedChannelData: HasCommitments) = runAnd(updatedChannelData)(ChannelWrap put updatedChannelData)
 
       def CLOSEANDWATCH(cd: ClosingData) = {
         val tier12txs = for (state <- cd.tier12States) yield state.txn

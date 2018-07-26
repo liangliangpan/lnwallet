@@ -38,7 +38,6 @@ import android.support.v7.widget.Toolbar
 import android.support.v4.app.Fragment
 import android.app.AlertDialog
 import android.content.Intent
-import java.util.TimerTask
 import android.net.Uri
 
 
@@ -85,9 +84,8 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
   // LISTENERS
 
   val blocksTitleListener = new BlocksListener {
-    def onBlocksDownloaded(p: Peer, b: Block, fb: FilteredBlock, left: Int) =
-      // Runtime optimization: avoid calling update more than once per 144 blocks
-      if (left % broadcaster.blocksPerDay == 0) UITask(updTitle).run
+    def onBlocksDownloaded(peer: Peer, block: Block, filteredBlock: FilteredBlock, left: Int) =
+      if (left < 1) updPaymentList.run else if (left % broadcaster.blocksPerDay == 0) UITask(updTitle).run
   }
 
   val peersListener = new PeerConnectedEventListener with PeerDisconnectedEventListener {
@@ -97,8 +95,8 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
   val txsListener = new TxTracker {
     // isGreaterThan check because as of now both listeners are fired on incoming and outgoing txs
-    def onCoinsSent(w: Wallet, txj: Transaction, a: Coin, b: Coin) = if (a isGreaterThan b) updateBtcItems
-    def onCoinsReceived(w: Wallet, txj: Transaction, a: Coin, b: Coin) = if (b isGreaterThan a) updateBtcItems
+    def onCoinsSent(w: Wallet, txj: Transaction, a: Coin, b: Coin) = if (a isGreaterThan b) updBtcItems
+    def onCoinsReceived(w: Wallet, txj: Transaction, a: Coin, b: Coin) = if (b isGreaterThan a) updBtcItems
     override def txConfirmed(txj: Transaction) = UITask(adapter.notifyDataSetChanged).run
   }
 
@@ -143,29 +141,12 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
       override def onChange(fromMe: Boolean) = if (!fromMe) react(lastQuery)
     }
 
-    def recentPays = new ReactLoader[PaymentInfo](host) {
-      def createItem(rc: RichCursor) = bag toPaymentInfo rc
-      def getCursor = bag.byRecent
-
-      val consume = (vec: InfoVec) => {
-        lnItems = for (item <- vec) yield LNWrap(item)
-        // This is a normal mode so show everything
-        updAll(btcItems ++ lnItems).run
-      }
+    def onCreateLoader(id: Int, bn: Bundle) = new ReactLoader[PaymentInfo](host) {
+      val consume = (vec: InfoVec) => runAnd(lnItems = vec map LNWrap)(updPaymentList)
+      def getCursor = if (lastQuery.isEmpty) bag.byRecent else bag.byQuery(lastQuery)
+      def createItem(richCursor: RichCursor) = bag toPaymentInfo richCursor
     }
 
-    def searchPays = new ReactLoader[PaymentInfo](host) {
-      def createItem(rc: RichCursor) = bag toPaymentInfo rc
-      def getCursor = bag byQuery lastQuery
-
-      val consume = (vec: InfoVec) => {
-        lnItems = for (item <- vec) yield LNWrap(item)
-        // This is a search mode so only show LN payments
-        updAll(lnItems).run
-      }
-    }
-
-    def onCreateLoader(loaderId: Int, bundle: Bundle) = if (lastQuery.isEmpty) recentPays else searchPays
     me.react = vs => runAnd(lastQuery = vs)(getSupportLoaderManager.restartLoader(1, null, self).forceLoad)
     host.getContentResolver.registerContentObserver(db sqlPath PaymentTable.table, true, observer)
   }
@@ -215,6 +196,20 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
   var btcItems = Vector.empty[BTCWrap]
   var allItems = Vector.empty[ItemWrap]
 
+  def updPaymentList = {
+    val delayedWraps = app.ChannelManager.delayedPublishes map ShowDelayedWrap
+    val tempItems = if (isSearching) lnItems else delayedWraps ++ btcItems ++ lnItems
+    allItems = tempItems.sortBy(_.getDate)(Ordering[java.util.Date].reverse) take 48
+
+    UITask {
+      allTxsWrapper setVisibility viewMap(allItems.size > minLinesNum)
+      mnemonicWarn setVisibility viewMap(allItems.isEmpty)
+      itemsList setVisibility viewMap(allItems.nonEmpty)
+      adapter.notifyDataSetChanged
+      updTitle
+    }
+  }
+
   val adapter = new BaseAdapter {
     def getCount = math.min(allItems.size, currentCut)
     def getItem(position: Int) = allItems(position)
@@ -226,19 +221,6 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
       val holder = if (null == view.getTag) new ViewHolder(view) else view.getTag.asInstanceOf[ViewHolder]
       allItems(position) fillView holder
       view
-    }
-  }
-
-  val updAll: Vector[ItemWrap] => TimerTask = items => {
-    val delayedWraps = for (delayed <- app.ChannelManager.delayedPublishes) yield ShowDelayedWrap(delayed)
-    allItems = (items ++ delayedWraps).sortBy(_.getDate)(Ordering[java.util.Date].reverse) take 48
-
-    UITask {
-      allTxsWrapper setVisibility viewMap(allItems.size > minLinesNum)
-      mnemonicWarn setVisibility viewMap(allItems.isEmpty)
-      itemsList setVisibility viewMap(allItems.nonEmpty)
-      adapter.notifyDataSetChanged
-      updTitle
     }
   }
 
@@ -257,8 +239,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
   }
 
   case class ShowDelayedWrap(stat: ShowDelayed) extends ItemWrap {
-    // These should always be on top of list and sorted by their blocks delay
-    val getDate = new java.util.Date(System.currentTimeMillis + 3600 * stat.delay)
+    val getDate = new java.util.Date(System.currentTimeMillis + stat.delay)
 
     def fillView(holder: ViewHolder) = {
       val humanSum = sumIn.format(denom formatted stat.amount)
@@ -579,7 +560,6 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
     mkCheckForm(alert => rm(alert)(none), <(replace, onError)(none), userWarn, dialog_cancel, dialog_boost)
 
     def replace: Unit = {
-      // Check once again whether it still needs boosting
       if (wrap.tx.getConfidence.getDepthInBlocks > 0) return
       if (DEAD == wrap.tx.getConfidence.getConfidenceType) return
       wrap.makeHidden
@@ -596,11 +576,11 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
     }
   }
 
-  def updateBtcItems = {
+  def updBtcItems = {
     val rawTxs = app.kit.wallet.getRecentTransactions(24, false)
     val wraps = for (txnj <- rawTxs.asScala.toVector) yield new TxWrap(txnj)
     btcItems = for (wrap <- wraps if wrap.isVisible) yield BTCWrap(wrap)
-    if (!isSearching) updAll(btcItems ++ lnItems).run
+    updPaymentList.run
   }
 
   host setSupportActionBar toolbar
@@ -620,6 +600,6 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
   // Periodically update timestamps in a payments list
   host.timer.schedule(adapter.notifyDataSetChanged, 10000, 10000)
   Utils clickableTextField frag.findViewById(R.id.mnemonicInfo)
-  <(updateBtcItems, onFail)(none)
+  <(updBtcItems, onFail)(none)
   react(new String)
 }

@@ -91,7 +91,7 @@ case class ClosingData(announce: NodeAnnouncement,
                        refundRemoteCommit: Seq[RemoteCommitPublished] = Nil, revokedCommit: Seq[RevokedCommitPublished] = Nil,
                        closedAt: Long = System.currentTimeMillis) extends HasCommitments {
 
-  lazy val realTier12Closings =
+  private lazy val realTier12Closings =
     revokedCommit ++ localCommit ++ remoteCommit ++
       nextRemoteCommit ++ refundRemoteCommit
 
@@ -101,6 +101,7 @@ case class ClosingData(announce: NodeAnnouncement,
 
   def bestClosing: CommitPublished = {
     // At least one closing is guaranteed to be here
+    // best closing is the one whose commit tx is confirmed
     val mutualWrappers = mutualClose map MutualCommitPublished
     mutualWrappers ++ realTier12Closings maxBy { commitPublished =>
       val confirmations \ isDead = getStatus(commitPublished.commitTx.txid)
@@ -109,9 +110,13 @@ case class ClosingData(announce: NodeAnnouncement,
   }
 
   def isOutdated: Boolean = {
-    val hardDelay = closedAt + 1000L * 3600 * 24 * 28 < System.currentTimeMillis
-    val bestDepth \ bestDead = getStatus(bestClosing.commitTx.txid)
-    bestDepth > minDepth || bestDead || hardDelay
+    val allConfirmedOrDead = bestClosing match {
+      case MutualCommitPublished(mutualTx) => getStatus(mutualTx.txid) match { case cfs \ isDead => cfs > minDepth || isDead }
+      case info => info.getState.map(state => state.txn.txid) map getStatus forall { case cfs \ isDead => cfs > minDepth || isDead }
+    }
+
+    val hardDelay = closedAt + 1000L * 3600 * 24 * 28
+    allConfirmedOrDead || hardDelay < System.currentTimeMillis
   }
 }
 
