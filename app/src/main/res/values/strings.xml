@@ -124,6 +124,8 @@
     <string name="btc_incoming_title"><![CDATA[<font color=#FF9900><strong>Bitcoin transaction</strong></font><br>%1$s<br><br>received %2$s<br><small>%3$s at current rates</small>]]></string>
     <string name="btc_outgoing_title_no_fee"><![CDATA[<font color=#FF9900><strong>Bitcoin transaction</strong></font><br>%1$s<br><br>sent %2$s<br><small>%3$s at current rates</small>]]></string>
     <string name="btc_outgoing_title"><![CDATA[<font color=#FF9900><strong>Bitcoin transaction</strong></font><br>%1$s<br><br>sent %2$s<br><small>%3$s at current rates</small><br>fee %4$s = %5$.2f%%]]></string>
+    <string name="btc_pending_title"><![CDATA[<font color=#FF9900><strong>Bitcoin transaction</strong></font><br><small>delayed channel refunding</small><br>%1$s<br><br>pending %2$s<br><small>%3$s at current rates</small><br>fee %4$s = %5$.2f%%]]></string>
+    <string name="btc_refunding">Refunding transaction</string>
 
     <string name="txs_sum_out"><![CDATA[<font color=#E31300>%1$s</font>]]></string>
     <string name="txs_sum_in"><![CDATA[<font color=#76B041>%1$s</font>]]></string>
@@ -209,7 +211,6 @@
         <item>failed and frozen</item>
     </array>
 
-    <string name="ln_refunding">Refunding transaction</string>
     <string name="ln_chan_close_inflight_details"><![CDATA[&#9888; <font color=#FF9900>Pending payments are present</font> so cooperative closing is going to be postponed until they are resolved<br><br>It it recommended to not close a channel right now and let those stuck payments to eventually become failed or fulfilled, would you still like to proceed?]]></string>
     <string name="ln_chan_force_offline_details"><![CDATA[&#9888; <font color=#FF9900>Channel is offline now</font> so shutting it down will result in a <a href=http://lightning-wallet.com/using-lightning-wallet#forced-channel-closure>forced channel closing</a> which requires additional fees and time<br><br>It is recommended to wait at least one day for a remote peer to get back online before doing this, would you still like to proceed?]]></string>
     <string name="ln_chan_force_details"><![CDATA[&#9888; Note that shutting this channel down right now will result in a <a href=http://lightning-wallet.com/using-lightning-wallet#forced-channel-closure>forced channel closing</a> which requires additional fees and time, would you still like to proceed?]]></string>
@@ -226,9 +227,9 @@
     </array>
 
     <array name="ln_status_left_blocks">
-        <item><![CDATA[broadcasting]]></item>
-        <item><![CDATA[in %1$s block]]></item>
-        <item><![CDATA[in %1$s blocks]]></item>
+        <item><![CDATA[<i>broadcasting</i>]]></item>
+        <item><![CDATA[<i>%1$s block left</i>]]></item>
+        <item><![CDATA[<i>%1$s blocks left</i>]]></item>
     </array>
 
     <array name="ln_status_expiry">

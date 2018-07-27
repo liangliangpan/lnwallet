@@ -126,6 +126,8 @@
     <string name="btc_incoming_title"><![CDATA[<font color=#FF9900><strong>Биткоин-транзакция</strong></font><br>%1$s<br><br>получено %2$s<br><small>%3$s по текущему курсу</small>]]></string>
     <string name="btc_outgoing_title_no_fee"><![CDATA[<font color=#FF9900><strong>Биткоин-транзакция</strong></font><br>%1$s<br><br>отправлено %2$s<br><small>%3$s по текущему курсу</small>]]></string>
     <string name="btc_outgoing_title"><![CDATA[<font color=#FF9900><strong>Биткоин-транзакция</strong></font><br>%1$s<br><br>отправлено %2$s<br><small>%3$s по текущему курсу</small><br>комса %4$s = %5$.2f%%]]></string>
+    <string name="btc_pending_title"><![CDATA[<font color=#FF9900><strong>Channel refunding</strong></font><br>%1$s<br><br>pending %2$s<br><small>%3$s at current rates</small><br>fee %4$s = %5$.2f%%]]></string>
+    <string name="btc_refunding">Refunding transaction</string>
 
     <string name="txs_sum_out"><![CDATA[<font color=#E31300>%1$s</font>]]></string>
     <string name="txs_sum_in"><![CDATA[<font color=#76B041>%1$s</font>]]></string>
@@ -212,7 +214,6 @@
         <item>заморожен</item>
     </array>
 
-    <string name="ln_refunding">Refunding transaction</string>
     <string name="ln_chan_close_inflight_details"><![CDATA[&#9888; <font color=#FF9900>В канале есть зависшие платежи</font> поэтому кооперативное закрытие будет отложено пока они не исчезнут<br><br>Рекомендуется не закрывать канал прямо сейчас, а вместо этого дать зависшим платежам некоторое время, все еще хотите продолжить?]]></string>
     <string name="ln_chan_force_offline_details"><![CDATA[&#9888; <font color=#FF9900>Канал сейчас в оффлайне</font> поэтому попытка закрытия приведет к <a href=http://lightning-wallet.com/using-lightning-wallet#forced-channel-closure>форсированному закрытию</a>, на которое уйдет большая сумма комиссии и больше времени<br><br>Рекомендуется подождать хотя-бы один день чтобы дать пиру шанс появиться в онлайне, все еще хотите продолжить?]]></string>
     <string name="ln_chan_force_details"><![CDATA[&#9888; Учтите, что попытка закрытия канала прямо сейчас приведет к <a href=http://lightning-wallet.com/using-lightning-wallet#forced-channel-closure>форсированному закрытию</a>, на которое уйдет большая сумма комиссии и больше времени, все еще хотите продолжить?]]></string>

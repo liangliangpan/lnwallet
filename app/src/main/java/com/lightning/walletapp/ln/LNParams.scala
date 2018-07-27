@@ -84,8 +84,8 @@ trait DelayedPublishStatus extends PublishStatus {
 case class HideReady(txn: Transaction) extends PublishStatus
 case class ShowReady(txn: Transaction, fee: Satoshi, amount: Satoshi) extends PublishStatus
 case class HideDelayed(parent: (DepthAndDead, Long), txn: Transaction) extends DelayedPublishStatus
-case class ShowDelayed(parent: (DepthAndDead, Long), txn: Transaction, fee: Satoshi, amount: Satoshi)
-  extends DelayedPublishStatus
+case class ShowDelayed(parent: (DepthAndDead, Long), txn: Transaction, commitTx: Transaction,
+                       fee: Satoshi, amount: Satoshi) extends DelayedPublishStatus
 
 trait Broadcaster extends ChannelListener { me =>
   def getTx(txid: BinaryData): Option[org.bitcoinj.core.Transaction]
@@ -113,6 +113,9 @@ trait Broadcaster extends ChannelListener { me =>
   }
 
   val blocksPerDay = 144
-  def csvShowDelayed(t1: TransactionWithInputInfo, t2: TransactionWithInputInfo) =
-    ShowDelayed(csv(t1.tx, t2.tx), t2.tx, t1 -- t2, t2.tx.allOutputsAmount)
+  def csvShowDelayed(t1: TransactionWithInputInfo, t2: TransactionWithInputInfo, commitTx: Transaction) =
+    ShowDelayed(csv(t1.tx, t2.tx), t2.tx, commitTx, t1 -- t2, t2.tx.allOutputsAmount)
+
+  def cltvShowDelayed(commitTx: Transaction, t1: TransactionWithInputInfo) =
+    ShowDelayed(csv(commitTx, t1.tx), t1.tx, commitTx, t1 -- t1, t1.tx.allOutputsAmount)
 }

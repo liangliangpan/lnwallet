@@ -134,9 +134,9 @@ case class LocalCommitPublished(claimMainDelayed: Seq[ClaimDelayedOutputTx], cla
   } yield claimTimeout.add.paymentHash
 
   override def getState = {
-    val success = for (t1 \ t2 <- claimHtlcSuccess) yield HideReady(t1.tx) :: csvShowDelayed(t1, t2) :: Nil
-    val timeout = for (t1 \ t2 <- claimHtlcTimeout) yield HideDelayed(cltv(commitTx, t1.tx), t1.tx) :: csvShowDelayed(t1, t2) :: Nil
-    val main = for (t1 <- claimMainDelayed) yield ShowDelayed(csv(commitTx, t1.tx), t1.tx, t1 -- t1, t1.tx.allOutputsAmount) :: Nil
+    val success = for (tier1 \ tier2 <- claimHtlcSuccess) yield HideReady(tier1.tx) :: csvShowDelayed(tier1, tier2, commitTx) :: Nil
+    val timeout = for (t1 \ t2 <- claimHtlcTimeout) yield HideDelayed(cltv(commitTx, t1.tx), t1.tx) :: csvShowDelayed(t1, t2, commitTx) :: Nil
+    val main = for (t1 <- claimMainDelayed) yield cltvShowDelayed(commitTx, t1) :: Nil
     main.flatten ++ success.flatten ++ timeout.flatten
   }
 }
@@ -150,7 +150,7 @@ case class RemoteCommitPublished(claimMain: Seq[ClaimP2WPKHOutputTx], claimHtlcS
   } yield add.paymentHash
 
   override def getState = {
-    val timeout = for (t1 <- claimHtlcTimeout) yield ShowDelayed(cltv(commitTx, t1.tx), t1.tx, t1 -- t1, t1.tx.allOutputsAmount)
+    val timeout = for (t1 <- claimHtlcTimeout) yield cltvShowDelayed(commitTx, t1)
     val success = for (t1 <- claimHtlcSuccess) yield ShowReady(t1.tx, t1 -- t1, t1.tx.allOutputsAmount)
     val main = for (t1 <- claimMain) yield ShowReady(t1.tx, t1 -- t1, t1.tx.allOutputsAmount)
     main ++ success ++ timeout

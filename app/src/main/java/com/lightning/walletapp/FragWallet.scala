@@ -131,22 +131,21 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
   }
 
   new LoaderCallbacks[Cursor] { self =>
-    def onLoadFinished(loader: LoaderCursor, c: Cursor) = none
-    def onLoaderReset(loader: LoaderCursor) = none
-    type LoaderCursor = Loader[Cursor]
-    type InfoVec = Vector[PaymentInfo]
-
     private[this] var lastQuery = new String
     private[this] val observer = new ContentObserver(new Handler) {
       override def onChange(fromMe: Boolean) = if (!fromMe) react(lastQuery)
     }
 
     def onCreateLoader(id: Int, bn: Bundle) = new ReactLoader[PaymentInfo](host) {
-      val consume = (vec: InfoVec) => runAnd(lnItems = vec map LNWrap)(updPaymentList)
+      val consume = (vec: InfoVec) => runAnd(lnItems = vec map LNWrap)(updPaymentList.run)
       def getCursor = if (lastQuery.isEmpty) bag.byRecent else bag.byQuery(lastQuery)
       def createItem(richCursor: RichCursor) = bag toPaymentInfo richCursor
     }
 
+    type LoaderCursor = Loader[Cursor]
+    type InfoVec = Vector[PaymentInfo]
+    def onLoaderReset(loader: LoaderCursor) = none
+    def onLoadFinished(loader: LoaderCursor, c: Cursor) = none
     me.react = vs => runAnd(lastQuery = vs)(getSupportLoaderManager.restartLoader(1, null, self).forceLoad)
     host.getContentResolver.registerContentObserver(db sqlPath PaymentTable.table, true, observer)
   }
@@ -190,7 +189,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
   // DISPLAYING ITEMS LIST
 
-  val minLinesNum = 4
+  val minLinesNum = 5
   var currentCut = minLinesNum
   var lnItems = Vector.empty[LNWrap]
   var btcItems = Vector.empty[BTCWrap]
@@ -242,28 +241,49 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
     val getDate = new java.util.Date(System.currentTimeMillis + stat.delay)
 
     def fillView(holder: ViewHolder) = {
+      val left = app.plurOrZero(blocksLeft, stat.delay)
       val humanSum = sumIn.format(denom formatted stat.amount)
-      holder.transactSum setText s"""<img src="btc"/>$humanSum""".html
-      holder.transactWhen setText app.plurOrZero(blocksLeft, stat.delay)
+      holder.transactSum setText s"<img src='btc'/>$humanSum".html
       holder.transactWhat setVisibility viewMap(isTablet)
       holder.transactCircle setImageResource await
-      holder.transactWhat setText ln_refunding
+      holder.transactWhat setText btc_refunding
+      holder.transactWhen setText left.html
     }
 
-    def generatePopup = none
+    def generatePopup = {
+      val humanAmount = coloredIn(stat.amount)
+      val inFiat = msatInFiatHuman(stat.amount)
+      val base = app.getString(btc_pending_title)
+      val left = app.plurOrZero(blocksLeft, stat.delay)
+      val paidFeePercent = stat.fee.amount / (stat.amount.amount / 100D)
+      val detailsWrapper = host.getLayoutInflater.inflate(R.layout.frag_tx_btc_details, null)
+      val viewTxOutside = detailsWrapper.findViewById(R.id.viewTxOutside).asInstanceOf[Button]
+      val viewShareBody = detailsWrapper.findViewById(R.id.viewShareBody).asInstanceOf[Button]
+      val title = base.format(left, humanAmount, inFiat, coloredOut(stat.fee), paidFeePercent)
+      showForm(negBuilder(dialog_ok, title.html, detailsWrapper).create)
+
+      viewTxOutside setOnClickListener onButtonTap {
+        val parentCommitTxid = stat.commitTx.txid.toString
+        val uri = s"https://testnet.smartbit.com.au/tx/$parentCommitTxid"
+        host startActivity new Intent(Intent.ACTION_VIEW, Uri parse uri)
+      }
+
+      viewShareBody setOnClickListener onButtonTap {
+        val rawTx = fr.acinq.bitcoin.Transaction write stat.txn
+        host share rawTx.toString
+      }
+    }
   }
 
   case class LNWrap(info: PaymentInfo) extends ItemWrap {
     val getDate: java.util.Date = new java.util.Date(info.stamp)
 
     def fillView(holder: ViewHolder) = {
-      val humanSum = info.incoming match {
-        case 1 => sumIn.format(denom formatted info.firstSum)
-        case 0 => sumOut.format(denom formatted info.firstSum)
-      }
-
       val desc = getDescription(info.description)
-      holder.transactSum setText s"""<img src="ln"/>$humanSum""".html
+      val marking = if (info.incoming == 1) sumIn else sumOut
+      val humanSum = marking.format(denom formatted info.firstSum)
+
+      holder.transactSum setText s"<img src='ln'/>$humanSum".html
       holder.transactCircle setImageResource imageMap(info.actualStatus)
       holder.transactWhen setText when(System.currentTimeMillis, getDate).html
       holder.transactWhat setVisibility viewMap(isTablet || isSearching)
@@ -344,7 +364,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
       val status = if (txDead) dead else if (txDepth >= minDepth) conf1 else await
       holder.transactWhen setText when(System.currentTimeMillis, getDate).html
-      holder.transactSum setText s"""<img src="btc"/>$humanSum""".html
+      holder.transactSum setText s"<img src='btc'/>$humanSum".html
       holder.transactWhat setText wrap.tx.getHashAsString
       holder.transactWhat setVisibility viewMap(isTablet)
       holder.transactCircle setImageResource status
@@ -584,8 +604,11 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
   }
 
   host setSupportActionBar toolbar
+  Utils clickableTextField frag.findViewById(R.id.mnemonicInfo)
   toolbar setOnClickListener onFastTap { if (!isSearching) showDenomChooser }
-  itemsList setOnItemClickListener onTap { pos => adapter.getItem(pos).generatePopup }
+  // Only update a minimized payments list to eliminate possible performance slowdowns
+  host.timer.schedule(if (currentCut <= minLinesNum) adapter.notifyDataSetChanged, 10000, 10000)
+  itemsList setOnItemClickListener onTap { position => adapter.getItem(position).generatePopup }
   itemsList setFooterDividersEnabled false
   itemsList addFooterView allTxsWrapper
   itemsList setAdapter adapter
@@ -596,10 +619,6 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
   app.kit.peerGroup addConnectedEventListener peersListener
   app.kit.wallet addCoinsReceivedEventListener txsListener
   app.kit.wallet addCoinsSentEventListener txsListener
-
-  // Periodically update timestamps in a payments list
-  host.timer.schedule(adapter.notifyDataSetChanged, 10000, 10000)
-  Utils clickableTextField frag.findViewById(R.id.mnemonicInfo)
   <(updBtcItems, onFail)(none)
   react(new String)
 }
