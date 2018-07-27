@@ -42,7 +42,6 @@ import android.net.Uri
 
 
 object FragWallet {
-  var currentPeerCount = 0
   var worker: FragWalletWorker = _
   val REDIRECT = "goToLnOpsActivity"
 }
@@ -89,8 +88,8 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
   }
 
   val peersListener = new PeerConnectedEventListener with PeerDisconnectedEventListener {
-    def onPeerDisconnected(peer: Peer, peerCount: Int) = runAnd(currentPeerCount = peerCount)(UITask(updTitle).run)
-    def onPeerConnected(peer: Peer, peerCount: Int) = runAnd(currentPeerCount = peerCount)(UITask(updTitle).run)
+    def onPeerDisconnected(connectedPeer: Peer, currentPeerCount: Int) = UITask(updTitle).run
+    def onPeerConnected(connectedPeer: Peer, currentPeerCount: Int) = UITask(updTitle).run
   }
 
   val txsListener = new TxTracker {
@@ -166,7 +165,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
     val btcFunds = if (btcTotalSum.isZero) btcEmpty else denom withSign btcTotalSum
 
     val subtitleText =
-      if (currentPeerCount < 1) statusConnecting
+      if (app.kit.peerGroup.numConnectedPeers < 1) statusConnecting
       else if (app.ChannelManager.currentBlocksLeft < broadcaster.blocksPerDay) statusOperational
       else app.plurOrZero(syncOps, app.ChannelManager.currentBlocksLeft / broadcaster.blocksPerDay)
 
@@ -182,8 +181,8 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
     super.setupSearch(menu)
     searchView addOnAttachStateChangeListener new View.OnAttachStateChangeListener {
-      def onViewDetachedFromWindow(searchViewItem: View) = adapter.notifyDataSetChanged
-      def onViewAttachedToWindow(searchViewItem: View) = adapter.notifyDataSetChanged
+      def onViewDetachedFromWindow(searchViewLenseItem: View): Unit = updPaymentList.run
+      def onViewAttachedToWindow(searchViewLenseItem: View): Unit = none
     }
   }
 

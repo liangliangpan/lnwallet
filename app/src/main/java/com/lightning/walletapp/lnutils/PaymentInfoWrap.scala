@@ -39,8 +39,9 @@ object PaymentInfoWrap extends PaymentInfoBag with ChannelListener { me =>
     uiNotify
   }
 
-  def resolvePending = if (app.ChannelManager.currentBlocksLeft < 1) {
-    // Send all pending payments only if we have an updated chain height
+  def resolvePending: Unit = {
+    if (app.kit.peerGroup.numConnectedPeers < 1) return
+    if (app.ChannelManager.currentBlocksLeft > 0) return
     unsent.values foreach fetchAndSend
     unsent = Map.empty
   }

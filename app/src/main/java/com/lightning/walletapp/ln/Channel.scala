@@ -116,7 +116,7 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
 
       // We have asked an external funder to broadcast a funding tx and got an onchain event
       case (wait: WaitBroadcastRemoteData, CMDSpent(fundTx), OFFLINE | WAIT_FUNDING_DONE) if wait.txHash == fundTx.hash =>
-        val d1 = me STORE WaitFundingDoneData(wait.announce, our = None, their = None, fundingTx = fundTx, wait.commitments)
+        val d1 = me STORE WaitFundingDoneData(wait.announce, our = None, their = None, fundTx, wait.commitments)
         me UPDATA d1
 
 
@@ -308,7 +308,7 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
 
         our -> their match {
           case Some(ourSig) \ Some(theirSig) =>
-            // Got both shutdowns without HTLCs in-flight so can start negotiations
+            // Got both shutdowns without HTLCs in-flight so can start closing negotiations
             val firstProposed = Closing.makeFirstClosing(commitments, ourSig.scriptPubKey, theirSig.scriptPubKey)
             val neg = NegotiationsData(announce, commitments, ourSig, theirSig, firstProposed :: Nil)
             BECOME(me STORE neg, NEGOTIATIONS) SEND firstProposed.localClosingSigned
@@ -420,6 +420,7 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
         data = me STORE some.modify(_.announce).setTo(newAnn)
 
 
+      case (wait: WaitBroadcastRemoteData, CMDOffline, WAIT_FUNDING_DONE) => BECOME(wait, OFFLINE)
       case (wait: WaitFundingDoneData, CMDOffline, WAIT_FUNDING_DONE) => BECOME(wait, OFFLINE)
       case (negs: NegotiationsData, CMDOffline, NEGOTIATIONS) => BECOME(negs, OFFLINE)
       case (norm: NormalData, CMDOffline, OPEN) => BECOME(norm, OFFLINE)

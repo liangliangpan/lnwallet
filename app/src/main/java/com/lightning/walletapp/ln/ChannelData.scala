@@ -101,7 +101,6 @@ case class ClosingData(announce: NodeAnnouncement,
 
   def bestClosing: CommitPublished = {
     // At least one closing is guaranteed to be here
-    // best closing is the one whose commit tx is confirmed
     val mutualWrappers = mutualClose map MutualCommitPublished
     mutualWrappers ++ realTier12Closings maxBy { commitPublished =>
       val confirmations \ isDead = getStatus(commitPublished.commitTx.txid)
