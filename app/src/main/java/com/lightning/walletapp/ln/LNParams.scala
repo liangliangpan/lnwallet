@@ -115,7 +115,4 @@ trait Broadcaster extends ChannelListener { me =>
   val blocksPerDay = 144
   def csvShowDelayed(t1: TransactionWithInputInfo, t2: TransactionWithInputInfo, commitTx: Transaction) =
     ShowDelayed(csv(t1.tx, t2.tx), t2.tx, commitTx, t1 -- t2, t2.tx.allOutputsAmount)
-
-  def cltvShowDelayed(commitTx: Transaction, t1: TransactionWithInputInfo) =
-    ShowDelayed(csv(commitTx, t1.tx), t1.tx, commitTx, t1 -- t1, t1.tx.allOutputsAmount)
 }
