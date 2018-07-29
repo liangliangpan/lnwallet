@@ -22,8 +22,8 @@ object LNParams { me =>
   val maxCltvDelta = 7 * 144L
   val minCapacitySat = 300000L
   final val dust = Satoshi(5460L)
-  final val maxCapacitySat = 16777215L
   final val maxHtlcValueMsat = 4000000000L
+  final val maxCapacity = Satoshi(16777215L)
   final val minHtlcValue = MilliSatoshi(1000L)
 
   var db: LNOpenHelper = _

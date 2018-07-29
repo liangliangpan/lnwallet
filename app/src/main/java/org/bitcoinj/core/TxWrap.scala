@@ -80,23 +80,23 @@ object TxWrap {
       case Success(req) if req.tx.getOutputs.size == 1 =>
         // Tx has only one output, this means it empties a wallet
         // channel amount is total sum subtracted from requested sum
-        val channelSum = req.tx.getOutput(0).getValue minus sum
+        val channelSat = req.tx.getOutput(0).getValue minus sum
 
         req.tx.clearOutputs
         req.tx.addOutput(sum, where)
-        req.tx.addOutput(channelSum, dummyScript)
-        channelSum -> req
+        req.tx.addOutput(channelSat, dummyScript)
+        channelSat -> req
 
       case Success(req) if req.tx.getOutputs.size == 2 =>
         // Tx has two outputs so there is some change which will be used for channel
         // Depending on whether change is below max chan size we return it as is or adjusted down
         val payee \ change = req.tx.getOutputs.asScala.partition(_.getScriptBytes sameElements addrScript)
         // Payee sum may have an excessive amount which should be added to a change sum
-        val realChangeSum = change.head.getValue.plus(payee.head.getValue minus sum)
+        val realChangeSat = change.head.getValue.plus(payee.head.getValue minus sum)
 
-        if (realChangeSum.value > LNParams.maxCapacitySat) {
+        if (realChangeSat.value > LNParams.maxCapacity.amount) {
           // Change amount exceeds max chan capacity so lower it down
-          val reducedChangeSum = realChangeSum minus suggestedChanSum
+          val reducedChangeSum = realChangeSat minus suggestedChanSum
 
           req.tx.clearOutputs
           req.tx.addOutput(sum, where)
@@ -109,8 +109,8 @@ object TxWrap {
           req.tx.clearOutputs
           req.tx.addOutput(sum, where)
           // Change becomes a channel capacity here
-          req.tx.addOutput(realChangeSum, dummyScript)
-          realChangeSum -> req
+          req.tx.addOutput(realChangeSat, dummyScript)
+          realChangeSat -> req
         }
     }
 

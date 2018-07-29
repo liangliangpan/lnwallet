@@ -123,14 +123,15 @@ class LNStartFundActivity extends TimerActivity { me =>
       // Asks user to provide a funding amount manually
 
       def askLocalFundingConfirm = UITask {
-        val maxCap = MilliSatoshi(math.min(app.kit.conf0Balance.value, LNParams.maxCapacitySat) * 1000L)
+        val maxCap = MilliSatoshi(math.min(app.kit.conf0Balance.value, LNParams.maxCapacity.amount) * 1000L)
         val minCap = MilliSatoshi(math.max(LNParams.broadcaster.perKwThreeSat, LNParams.minCapacitySat) * 1000L)
-        val capacityHints = getString(amount_hint_newchan).format(denom withSign minCap, denom withSign maxCap)
+
         val content = getLayoutInflater.inflate(R.layout.frag_input_fiat_converter, null, false)
-        val rateManager = new RateManager(capacityHints, content)
-        val dummyKey = randomPrivKey.publicKey
+        val capacityHints = getString(amount_hint_newchan).format(denom withSign minCap,
+          denom withSign LNParams.maxCapacity, denom withSign app.kit.conf0Balance)
 
         def next(msat: MilliSatoshi) = new TxProcessor {
+          val dummyKey: PublicKey = randomPrivKey.publicKey
           val dummyScript = pubKeyScript(dummyKey, dummyKey)
           val pay = P2WSHData(msat, dummyScript)
 
@@ -148,6 +149,7 @@ class LNStartFundActivity extends TimerActivity { me =>
           }
         }
 
+        val rateManager = new RateManager(capacityHints, content)
         def askAttempt(alert: AlertDialog) = rateManager.result match {
           case Success(ms) if ms < minCap => app toast dialog_sum_small
           case Success(ms) if ms > maxCap => app toast dialog_sum_big
