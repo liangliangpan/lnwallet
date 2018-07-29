@@ -13,6 +13,12 @@
         android:text="@string/ln_share_proof"
         android:visibility="gone"/>
 
+    <Button
+        style="@style/TransButton"
+        android:id="@+id/paymentDebug"
+        android:text="@string/ln_share_debug"
+        android:visibility="gone"/>
+
     <View style="@style/GrayDivider"/>
 
     <TextView

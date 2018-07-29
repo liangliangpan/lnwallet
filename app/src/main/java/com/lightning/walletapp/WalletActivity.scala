@@ -297,9 +297,8 @@ class WalletActivity extends NfcReaderActivity with ScanActivity { me =>
       // warn user as this is a time consuming operation
 
       rm(menu) {
-        mkCheckForm(alert => rm(alert)(go), none,
-          baseTextBuilder(me getString sets_rescan_ok),
-          dialog_ok, dialog_cancel)
+        val bld = baseTextBuilder(me getString sets_rescan_ok)
+        mkCheckForm(alert => rm(alert)(go), none, bld, dialog_ok, dialog_cancel)
       }
 
       def go = try {

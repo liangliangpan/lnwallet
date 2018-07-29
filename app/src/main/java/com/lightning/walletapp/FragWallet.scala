@@ -50,7 +50,7 @@ class FragWallet extends Fragment {
   override def onCreateView(inf: LayoutInflater, vg: ViewGroup, bn: Bundle) = inf.inflate(R.layout.frag_view_pager_btc, vg, false)
   override def onViewCreated(view: View, state: Bundle) = worker = new FragWalletWorker(getActivity.asInstanceOf[WalletActivity], view)
   override def onDestroy = wrap(super.onDestroy)(worker.onFragmentDestroy)
-  override def onResume = wrap(super.onResume)(worker.onFragmentResume)
+  override def onResume = wrap(super.onResume)(worker.host.checkTransData)
 }
 
 class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar with HumanTimeDisplay { me =>
@@ -299,6 +299,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
       val detailsWrapper = host.getLayoutInflater.inflate(R.layout.frag_tx_ln_details, null)
       val paymentDetails = detailsWrapper.findViewById(R.id.paymentDetails).asInstanceOf[TextView]
       val paymentProof = detailsWrapper.findViewById(R.id.paymentProof).asInstanceOf[Button]
+      val paymentDebug = detailsWrapper.findViewById(R.id.paymentDebug).asInstanceOf[Button]
       val paymentHash = detailsWrapper.findViewById(R.id.paymentHash).asInstanceOf[Button]
       paymentHash setOnClickListener onButtonTap(host share rd.paymentHashString)
       paymentDetails setText getDescription(info.description).html
@@ -311,6 +312,16 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
           host share lnProof.format(serialized, info.preimage.toString)
         }
       }
+
+      for {
+        responses <- PaymentInfo.errors.get(rd.pr.paymentHash)
+        history = responses.reverse.map(_.toString) mkString "\n==\n"
+        rd1 <- PaymentInfoWrap.inFlightPayments.get(rd.pr.paymentHash)
+        routingPath = for (usedPaymentHop <- rd1.usedRoute) yield usedPaymentHop.humanDetails
+        receiver = s"Final payee: ${rd1.pr.nodeId.toString}, Expiry: ${rd1.pr.adjustedMinFinalCltvExpiry}"
+        fullDebugData = ("Your wallet" +: routingPath :+ receiver mkString "\n-->\n") + s"\n\n$history"
+        _ = paymentDebug setOnClickListener onButtonTap(host share fullDebugData)
+      } paymentDebug setVisibility View.VISIBLE
 
       def outgoingTitle = {
         val fee = MilliSatoshi(info.lastMsat - info.firstMsat)
@@ -428,12 +439,6 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
   }
 
   // WORKER EVENT HANDLERS
-
-  def onFragmentResume = {
-    for (c <- app.ChannelManager.all) c.listeners += chanListener
-    // Calling host when this fragment is definitely created
-    host.checkTransData
-  }
 
   def onFragmentDestroy = {
     for (c <- app.ChannelManager.all) c.listeners -= chanListener
@@ -614,6 +619,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
   itemsList addFooterView allTxsWrapper
   itemsList setAdapter adapter
 
+  for (c <- app.ChannelManager.all) c.listeners += chanListener
   app.kit.wallet addTransactionConfidenceEventListener txsListener
   app.kit.peerGroup addBlocksDownloadedEventListener blocksTitleListener
   app.kit.peerGroup addDisconnectedEventListener peersListener
