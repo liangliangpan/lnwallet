@@ -104,12 +104,6 @@ object PaymentInfoWrap extends PaymentInfoBag with ChannelListener { me =>
         updStatus(FAILURE, rd.pr.paymentHash)
     }
 
-  override def onException = {
-    case _ \ HTLCExpiryException(norm, _) => // do nothing, prevent shutdown
-    case _ \ CMDAddImpossible(rd, _) => me failOnUI rd // prevent shutdown
-    case chan \ _ => chan process app.ChannelManager.CMDLocalShutdown
-  }
-
   override def outPaymentAccepted(rd: RoutingData) = {
     // Payment has been accepted by channel so start local tracking
     inFlightPayments = inFlightPayments.updated(rd.pr.paymentHash, rd)

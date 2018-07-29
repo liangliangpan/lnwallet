@@ -506,11 +506,6 @@ abstract class Channel extends StateMachine[ChannelData] { me =>
       // ENDING A CHANNEL
 
 
-      case (some: HasCommitments, err: Error, WAIT_FUNDING_DONE | NEGOTIATIONS | OPEN | OFFLINE) =>
-        // REFUNDING is an exception here: no matter what happens we can't spend local in that state
-        startLocalClose(some)
-
-
       case (some: HasCommitments, _: CMDShutdown, NEGOTIATIONS | OFFLINE) =>
         // Disregard custom scriptPubKey and always refund to local wallet
         // CMDShutdown in WAIT_FUNDING_DONE and OPEN may be cooperative

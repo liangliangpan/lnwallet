@@ -104,16 +104,18 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
     // should be removed once frag is destroyed
 
     override def onProcessSuccess = {
-      case (_, _, remoteError: wire.Error) =>
-        // Remote peer has sent an Error, show it
-        host onFail remoteError.exception.getMessage
+      case (chan, data: HasCommitments, remoteError: wire.Error) => UITask {
+        val bld = baseBuilder(chan.data.announce.workingAddress.getHostString, remoteError.exception.getMessage)
+        mkCheckFormNeutral(alert => rm(alert)(none), none, alert => rm(alert)(chan startLocalClose data), bld, dialog_ok, -1, ln_chan_force)
+      }.run
     }
 
     override def onException = {
-      case _ \ CMDAddImpossible(_, code) =>
+      case _ \ CMDAddImpossible(rd, code) =>
         // Non-fatal: can't add this payment, inform user why
         val bld = negTextBuilder(dialog_ok, app getString code)
         UITask(host showForm bld.create).run
+        PaymentInfoWrap failOnUI rd
 
       case chan \ HTLCExpiryException(_, htlc) =>
         val paymentHash = htlc.add.paymentHash.toString

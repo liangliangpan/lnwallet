@@ -66,8 +66,7 @@ case class CommitSig(channelId: BinaryData, signature: BinaryData, htlcSignature
 case class RevokeAndAck(channelId: BinaryData, perCommitmentSecret: Scalar, nextPerCommitmentPoint: Point) extends ChannelMessage
 
 case class Error(channelId: BinaryData, data: BinaryData) extends ChannelMessage {
-  def exception = new LightningException(reason = s"Error from remote peer\n\n$text")
-  lazy val isSyncError = text.toLowerCase contains "sync error"
+  def exception = new LightningException(reason = s"Remote channel message\n\n$text")
   lazy val text = new String(data, "UTF-8")
 }
 
