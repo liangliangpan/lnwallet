@@ -87,10 +87,6 @@
     <string name="amount_hint_btc"><![CDATA[Сумма в Bitcoin%1$s]]></string>
     <string name="amount_hint_fin"><![CDATA[Сумма в Finney%1$s]]></string>
 
-    <string name="amount_hint_can_send"><![CDATA[<br><small>доступно %1$s</small>]]></string>
-    <string name="amount_hint_can_receive"><![CDATA[<br><small>лимит %1$s</small>]]></string>
-    <string name="amount_hint_newchan"><![CDATA[<br><small>минимум %1$s<br>максимум %2$s</small>]]></string>
-
     <string name="dialog_pr_making">Создаю платежный запрос&#8230;</string>
     <string name="dialog_pr_expired">Этот платежный запрос устарел</string>
     <string name="dialog_recovering">Восстанавливаю деньги&#8230;</string>
@@ -111,6 +107,9 @@
     <string name="ln_empty">Нет каналов</string>
     <string name="btc_status_operational">Кошелек онлайн</string>
     <string name="btc_status_connecting"><![CDATA[<font color=#FF9900>Поиск узлов&#8230;</font>]]></string>
+    <string name="amount_hint_newchan"><![CDATA[<br><small>минимум %1$s<br>максимум %2$s<br>баланс %3$s</small>]]></string>
+    <string name="amount_hint_can_send"><![CDATA[<br><small>доступно %1$s</small>]]></string>
+    <string name="amount_hint_can_receive"><![CDATA[<br><small>лимит %1$s</small>]]></string>
 
     <array name="info_progress">
         <item>Синхронизация завершена</item>
