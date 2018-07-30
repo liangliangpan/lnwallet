@@ -86,7 +86,7 @@
             android:screenOrientation="portrait" android:theme="@style/NoBar"/>
 
         <activity android:launchMode="singleTask" android:name="com.lightning.walletapp.LNOpsActivity"
-            android:screenOrientation="portrait" android:theme="@style/NoBar"/>
+            android:screenOrientation="portrait" android:theme="@style/CustomBar"/>
 
         <activity android:launchMode="singleTask" android:name="com.lightning.walletapp.LNStartActivity"
             android:screenOrientation="portrait" android:theme="@style/CustomBar"/>
