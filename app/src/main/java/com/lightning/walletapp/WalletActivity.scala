@@ -220,7 +220,7 @@ class WalletActivity extends NfcReaderActivity with ScanActivity { me =>
 
   val tokensPrice = MilliSatoshi(1000000L)
   def goLNStart = me goTo classOf[LNStartActivity]
-  def goAddChannel(top: View) = if (app.ChannelManager.all.isEmpty) {
+  def goAddChannel(top: View) = if (OlympusWrap.backupExhausted) {
     val humanPrice = s"${coloredIn apply tokensPrice} <font color=#999999>${msatInFiatHuman apply tokensPrice}</font>"
     val warn = baseTextBuilder(getString(tokens_warn).format(humanPrice).html).setCustomTitle(me getString action_ln_open)
     mkCheckForm(alert => rm(alert)(goLNStart), none, warn, dialog_ok, dialog_cancel)
