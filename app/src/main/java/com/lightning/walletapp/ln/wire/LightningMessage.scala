@@ -121,6 +121,13 @@ case class NodeAnnouncement(signature: BinaryData,
     case IPv4(sockAddress, port) => new InetSocketAddress(sockAddress, port)
     case IPv6(sockAddress, port) => new InetSocketAddress(sockAddress, port)
   }.head
+
+  override def toString = {
+    val keyPart = nodeId.toString take 15
+    val cute = keyPart grouped 3 mkString "\u0020"
+    val address = workingAddress.getHostString
+    s"$address<br><small>$cute</small>"
+  }
 }
 
 sealed trait NodeAddress

@@ -597,16 +597,13 @@ object Channel {
   val REFUNDING = "REFUNDING"
   val CLOSING = "CLOSING"
 
-  def estimateCanReceive(chan: Channel) = chan { cs =>
-    // Somewhat counterintuitive: localParams.channelReserveSat is THEIR unspendable reseve
-    // peer's balance can't go below their channel reserve, commit tx fee is always paid by us
-    val canReceive = cs.localCommit.spec.toRemoteMsat - cs.localParams.channelReserveSat * 1000L
-    math.min(canReceive, LNParams.maxHtlcValueMsat)
-  } getOrElse 0L
-
+  def estimateCanReceiveCapped(chan: Channel) = math.min(estimateCanReceive(chan), LNParams.maxHtlcValueMsat)
+  // Somewhat counterintuitive: localParams.channelReserveSat is THEIR unspendable reseve, peer's balance can't go below their channel reserve
+  def estimateCanReceive(chan: Channel) = chan(cs => cs.localCommit.spec.toRemoteMsat - cs.localParams.channelReserveSat * 1000L) getOrElse 0L
   def estimateCanSend(chan: Channel) = chan(_.reducedRemoteState.canSendMsat) getOrElse 0L
-  def isOperational(chan: Channel) = chan.data match { case NormalData(_, _, None, None) => true case _ => false }
+
   def isOpening(chan: Channel) = chan.data.isInstanceOf[WaitFundingDoneData] || chan.data.isInstanceOf[WaitBroadcastRemoteData]
+  def isOperational(chan: Channel) = chan.data match { case NormalData(_, _, None, None) => true case otherwise => false }
   def inFlightHtlcs(chan: Channel) = chan(Commitments.latestRemoteCommit(_).spec.htlcs) getOrElse Set.empty
   def hasReceivedPayments(chan: Channel) = chan(_.remoteNextHtlcId).exists(_ > 0)
 

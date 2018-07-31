@@ -140,8 +140,8 @@ class WalletApp extends Application { me =>
       statuses.collect { case sd: ShowDelayed if !sd.isPublishable && sd.delay > Long.MinValue => sd }
     }
 
+    def activeInFlightHashes = notClosingOrRefunding.flatMap(inFlightHtlcs).map(_.add.paymentHash)
     def frozenInFlightHashes = all.map(_.data).collect { case cd: ClosingData => cd.frozenPublishedHashes }.flatten
-    def activeInFlightHashes = notClosingOrRefunding.flatMap(inFlightHtlcs).map(htlc => htlc.add.paymentHash)
     def initConnect = for (c <- notClosing) ConnectionManager.connectTo(c.data.announce, notify = false)
 
     def updateChangedIPs = for {

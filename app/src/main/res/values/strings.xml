@@ -206,17 +206,17 @@
         <item>failed and frozen</item>
     </array>
 
-    <string name="ln_info_sent">total sent</string>
-    <string name="ln_info_received">total received</string>
-    <string name="ln_info_in_flight">total in-flight</string>
+    <string name="ln_info_sent">value sent</string>
+    <string name="ln_info_received">value received</string>
+    <string name="ln_info_in_flight">value in-flight</string>
     <string name="ln_info_can_receive">can receive</string>
     <string name="ln_info_refundable">refundable</string>
-    <string name="ln_info_started">opening date</string>
-    <string name="ln_info_closed">closing date</string>
     <string name="ln_info_depth">funding depth</string>
     <string name="ln_info_capacity">capacity</string>
     <string name="ln_info_can_send">can send</string>
     <string name="ln_info_fee">breaking fee</string>
+    <string name="ln_info_started">started</string>
+    <string name="ln_info_closed">closed</string>
 
     <string name="ln_chan_close_inflight_details"><![CDATA[&#9888; <font color=#FF9900>Pending payments are present</font> so cooperative closing is going to be postponed until they are resolved<br><br>It it recommended to not close a channel right now and let those stuck payments to eventually become failed or fulfilled, would you still like to proceed?]]></string>
     <string name="ln_chan_force_offline_details"><![CDATA[&#9888; <font color=#FF9900>Channel is offline now</font> so shutting it down will result in a <a href=http://lightning-wallet.com/using-lightning-wallet#forced-channel-closure>forced channel closing</a> which requires additional fees and time<br><br>It is recommended to wait at least one day for a remote peer to get back online before doing this, would you still like to proceed?]]></string>
@@ -234,9 +234,9 @@
     </array>
 
     <array name="ln_chan_online">
-        <item><![CDATA[No online channels]]></item>
-        <item><![CDATA[%1$s online channel]]></item>
-        <item><![CDATA[%1$s online channels]]></item>
+        <item><![CDATA[No alive channels]]></item>
+        <item><![CDATA[%1$s channel is alive]]></item>
+        <item><![CDATA[%1$s channels are alive]]></item>
     </array>
 
     <array name="ln_status_left_blocks">

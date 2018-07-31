@@ -105,8 +105,9 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
     override def onProcessSuccess = {
       case (chan, data: HasCommitments, remoteError: wire.Error) => UITask {
-        val bld = baseBuilder(chan.data.announce.workingAddress.getHostString, remoteError.exception.getMessage)
-        mkCheckFormNeutral(alert => rm(alert)(none), none, alert => rm(alert)(chan startLocalClose data), bld, dialog_ok, -1, ln_chan_force)
+        val bld = baseBuilder(chan.data.announce.toString.html, remoteError.exception.getMessage)
+        def close(alert: AlertDialog) = rm(alert)(chan process app.ChannelManager.CMDLocalShutdown)
+        mkCheckFormNeutral(alert => rm(alert)(none), none, close, bld, dialog_ok, -1, ln_chan_force)
       }.run
     }
 
@@ -459,9 +460,9 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
     def makeRequest(sum: MilliSatoshi, preimg: BinaryData) = {
       val onChainFallback = Some(app.kit.currentAddress.toString)
-      val description = content.findViewById(R.id.inputDescription).asInstanceOf[EditText].getText.toString.trim
-      val routes = chansWithRoutes.filterKeys(goodChannel => estimateCanReceive(goodChannel) >= sum.amount).values.toVector
-      val pr = PaymentRequest(chainHash, Some(sum), Crypto sha256 preimg, nodePrivateKey, description, onChainFallback, routes)
+      val info = content.findViewById(R.id.inputDescription).asInstanceOf[EditText].getText.toString.trim
+      val routes = chansWithRoutes.filterKeys(chan => estimateCanReceiveCapped(chan) >= sum.amount).values.toVector
+      val pr = PaymentRequest(chainHash, Some(sum), Crypto sha256 preimg, nodePrivateKey, info, onChainFallback, routes)
       val rd = emptyRD(pr, sum.amount, useCache = true)
 
       db.change(PaymentTable.newVirtualSql, params = rd.queryText, rd.paymentHashString)

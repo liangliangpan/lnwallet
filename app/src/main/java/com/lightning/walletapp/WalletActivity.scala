@@ -20,6 +20,7 @@ import fr.acinq.bitcoin.{MilliSatoshi, Satoshi}
 import org.bitcoinj.core.{Address, Batch, TxWrap}
 import com.lightning.walletapp.ln.wire.{NodeAnnouncement, Started}
 import com.lightning.walletapp.lnutils.IconGetter.{bigFont, scrWidth}
+import com.lightning.walletapp.ln.RoutingInfoTag.PaymentRoute
 import com.lightning.walletapp.lnutils.olympus.OlympusWrap
 import android.support.v4.app.FragmentStatePagerAdapter
 import org.ndeftools.util.activity.NfcReaderActivity
@@ -54,8 +55,9 @@ trait SearchBar { me =>
 
 trait HumanTimeDisplay {
   val host: TimerActivity
-  val time: Date => String = date =>
+  val time: Date => String = date => {
     new SimpleDateFormat(timeString) format date
+  }
 
   // Should be accessed after activity is initialized
   lazy val timeString = DateFormat is24HourFormat host match {
@@ -157,9 +159,9 @@ class WalletActivity extends NfcReaderActivity with ScanActivity { me =>
 
   def goReceivePayment(top: View) = {
     val operationalChannels = app.ChannelManager.notClosingOrRefunding.filter(isOperational)
-    val operationalChannelsWithRoutes = operationalChannels.flatMap(channelAndHop).toMap
-    val maxCanReceive = MilliSatoshi(operationalChannelsWithRoutes.keys
-      .map(estimateCanReceive).reduceOption(_ max _) getOrElse 0L)
+    val operationalChannelsWithRoutes: Map[Channel, PaymentRoute] = operationalChannels.flatMap(channelAndHop).toMap
+    val maxCanReceiveMsat = operationalChannelsWithRoutes.keys.map(estimateCanReceiveCapped).reduceOption(_ max _) getOrElse 0L
+    val maxCanReceive = MilliSatoshi(maxCanReceiveMsat)
 
     val reserveUnspent = getString(ln_receive_reserve) format coloredOut(maxCanReceive)
     val lnReceiveText = if (operationalChannels.isEmpty) getString(ln_receive_option).format(me getString ln_receive_nochan)
