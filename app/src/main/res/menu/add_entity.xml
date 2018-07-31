@@ -3,9 +3,9 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
-        android:title="@string/olympus_add"
         app:showAsAction="always|collapseActionView"
         android:icon="@drawable/ic_add_white_24dp"
-        android:id="@+id/actionAddOlympus"/>
+        android:id="@+id/actionAddEntity"
+        android:title="+"/>
 
 </menu>

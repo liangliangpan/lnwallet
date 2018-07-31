@@ -5,7 +5,7 @@ import com.lightning.walletapp.ln._
 import android.os.Bundle
 import com.lightning.walletapp.R.string._
 import android.support.v7.widget.Toolbar
-import android.view.{View, ViewGroup}
+import android.view.{Menu, MenuItem, View, ViewGroup}
 import android.widget._
 import java.util.Date
 
@@ -112,6 +112,16 @@ class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
       holder fillView getItem(position)
       card
     }
+  }
+
+  override def onOptionsItemSelected(m: MenuItem) = {
+    if (m.getItemId == R.id.actionAddEntity) me exitTo classOf[LNStartActivity]
+    true
+  }
+
+  override def onCreateOptionsMenu(menu: Menu) = {
+    getMenuInflater.inflate(R.menu.add_entity, menu)
+    true
   }
 
   def INIT(state: Bundle) = if (app.isAlive) {
