@@ -74,17 +74,17 @@ class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
         val started = me time new Date(cs.startedAt)
         val commitFee = Satoshi(cs.reducedRemoteState.feesSat)
         val threshold = math.max(cs.remoteParams.minimumDepth, LNParams.minDepth)
-        val valueInFlight = Satoshi(inFlightHtlcs(chan).map(_.add.amount.amount).sum / 1000L)
-        val refundable = Satoshi(Commitments.latestRemoteCommit(cs).spec.toRemoteMsat / 1000L)
-        val canSendMsat \ canReceiveMsat = estimateCanSend(chan) -> estimateCanReceive(chan)
         val txDepth \ _ = LNParams.broadcaster.getStatus(Commitments fundingTxid cs)
-        val valueReceived = Satoshi(getStat(cs.channelId, 1).getOrElse(0L) / 1000L)
-        val valueSent = Satoshi(getStat(cs.channelId, 0).getOrElse(0L) / 1000)
+        val canSendMsat \ canReceiveMsat = estimateCanSend(chan) -> estimateCanReceive(chan)
+        val valueInFlight = MilliSatoshi(inFlightHtlcs(chan).map(_.add.amount.amount).sum): Satoshi
+        val refundable = MilliSatoshi(Commitments.latestRemoteCommit(cs).spec.toRemoteMsat): Satoshi
+        val valueReceived = MilliSatoshi(getStat(cs.channelId, 1) getOrElse 0L): Satoshi
+        val valueSent = MilliSatoshi(getStat(cs.channelId, 0) getOrElse 0L): Satoshi
 
         stackBar setProgress (canSendMsat / capacity.amount).toInt
         stackBar setSecondaryProgress (canReceiveMsat / capacity.amount).toInt
-        canReceiveText setText denom.withSign(Satoshi apply canReceiveMsat / 1000L).html
-        canSendText setText denom.withSign(Satoshi apply canSendMsat / 1000L).html
+        canReceiveText setText denom.withSign(MilliSatoshi(canReceiveMsat): Satoshi).html
+        canSendText setText denom.withSign(MilliSatoshi(canSendMsat): Satoshi).html
         paymentsReceivedText setText denom.withSign(valueReceived).html
         paymentsInFlightText setText denom.withSign(valueInFlight).html
         refundableAmountText setText denom.withSign(refundable).html

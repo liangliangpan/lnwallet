@@ -63,7 +63,7 @@ object SatDenomination extends Denomination {
 }
 
 object FinDenomination extends Denomination {
-  val fmt = new DecimalFormat("###,###.#######")
+  val fmt = new DecimalFormat("###,##0.0000###")
   val txt = app getString amount_hint_fin
   val factor = 10000000L
 
