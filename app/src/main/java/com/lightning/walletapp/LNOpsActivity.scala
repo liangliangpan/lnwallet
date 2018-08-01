@@ -88,6 +88,7 @@ class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
     val canSendText = view.findViewById(R.id.canSendText).asInstanceOf[TextView]
     extraInfo setVisibility View.GONE
     stackBar setMax 1000
+    view setTag this
 
     def visibleExcept(gone: Int*) =
       for (textWrapper <- wrappers) {
@@ -168,8 +169,6 @@ class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
         }
       }
     }
-
-    view setTag this
   }
 
   override def onDestroy = wrap(super.onDestroy) {

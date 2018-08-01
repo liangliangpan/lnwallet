@@ -80,9 +80,20 @@ class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
   var setBatchMode: Batch => Unit = none
   var setNormalMode: FragLNStart => Unit = none
   var setExternalFunder: Started => Unit = none
-  lazy val host = me.getActivity.asInstanceOf[LNStartActivity]
   private[this] var nodes = Vector.empty[StartNodeView]
-  private[this] var nodeWorker: NodeWorker = _
+  lazy val host = me.getActivity.asInstanceOf[LNStartActivity]
+
+  new ThrottledWork[String, AnnounceChansNumVec] {
+    def error(error: Throwable) = Tools errlog error
+    def work(userQuery: String) = findNodes(userQuery)
+    def process(userQuery: String, results: AnnounceChansNumVec) = {
+      nodes = for (announce <- results) yield RemoteNodeView(announce)
+      host.UITask(adapter.notifyDataSetChanged).run
+    }
+
+    // Connect to search
+    me.react = addWork
+  }
 
   val adapter = new BaseAdapter {
     def getView(pos: Int, savedView: View, par: ViewGroup) = {
@@ -100,15 +111,6 @@ class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
   def onNodeSelected(pos: Int): Unit = {
     app.TransData.value = adapter getItem pos
     host goTo classOf[LNStartFundActivity]
-  }
-
-  abstract class NodeWorker
-  extends ThrottledWork[String, AnnounceChansNumVec] {
-    def error(searchError: Throwable) = Tools errlog searchError
-    def process(userQuery: String, results: AnnounceChansNumVec) = {
-      nodes = for (announce <- results) yield RemoteNodeView(announce)
-      host.UITask(adapter.notifyDataSetChanged).run
-    }
   }
 
   override def onViewCreated(view: View, state: Bundle) = {
@@ -176,13 +178,6 @@ class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
       // Hide a batch funding notification
       batchPresentWrap setVisibility View.GONE
       FragLNStart.batchOpt = None
-
-      nodeWorker = new NodeWorker {
-        // Search for just user query text
-        def work(ask: String) = findNodes(ask)
-        // Connect worker to search
-        me.react = addWork
-      }
     }
 
     setBatchMode = batch => {
@@ -190,15 +185,6 @@ class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
       val info = app getString ln_open_batch_inform
       batchPresentWrap setVisibility View.VISIBLE
       batchPresentInfo setText info.html
-
-      nodeWorker = new NodeWorker {
-        def work(ask: String) = for {
-          payee <- findNodes(batch.pr.nodeId.toString)
-          searchResultNodes <- findNodes(ask)
-        } yield payee ++ searchResultNodes
-        // Connect worker to search
-        me.react = addWork
-      }
     }
 
     // Wire up all tappable elements
