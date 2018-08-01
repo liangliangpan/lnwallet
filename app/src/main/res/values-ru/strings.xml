@@ -209,19 +209,53 @@
         <item>заморожен</item>
     </array>
 
+    <string name="ln_info_sent">value sent</string>
+    <string name="ln_info_received">value received</string>
+    <string name="ln_info_in_flight">value in-flight</string>
+    <string name="ln_info_can_receive">can receive</string>
+    <string name="ln_info_refundable">refundable</string>
+    <string name="ln_info_depth">funding depth</string>
+    <string name="ln_info_capacity">capacity</string>
+    <string name="ln_info_can_send">can send</string>
+    <string name="ln_info_fee">breaking fee</string>
+    <string name="ln_info_started">started</string>
+    <string name="ln_info_closed">closed</string>
+
+    <string name="ln_info_funding">%1$s of %2$s</string>
+    <string name="ln_info_close_coop">Closed cooperatively</string>
+    <string name="ln_info_close_remote">Closed by remote peer</string>
+    <string name="ln_info_close_local">Closed by local wallet</string>
+    <string name="ln_info_no_receive">Receiving is not enabled by peer</string>
+    <string name="ln_info_coop_attempt">Trying to close cooperatively&#8230;</string>
+    <string name="ln_info_state_offline"><![CDATA[<font color=#777777><small>disconnected</small></font>]]></string>
+    <string name="ln_info_state_online"><![CDATA[<font color=#76B041><small>online</small></font>]]></string>
+    <string name="ln_info_nothing"><![CDATA[<i>nothing</i>]]></string>
+
+    <string name="ln_info_status_open"><![CDATA[<font color=#76B041>OPEN</font>]]></string>
+    <string name="ln_info_status_opening"><![CDATA[<font color=#FF9900>OPENING</font>]]></string>
+    <string name="ln_info_status_shutdown"><![CDATA[<font color=#FF9900>SHUTDOWN</font>]]></string>
+    <string name="ln_info_status_negotiations"><![CDATA[<font color=#FF9900>NEGOTIATIONS</font>]]></string>
+    <string name="ln_info_status_other"><![CDATA[<font color=#777777>%1$s</font>]]></string>
+
     <string name="ln_chan_close_inflight_details"><![CDATA[&#9888; <font color=#FF9900>В канале есть зависшие платежи</font> поэтому кооперативное закрытие будет отложено пока они не исчезнут<br><br>Рекомендуется не закрывать канал прямо сейчас, а вместо этого дать зависшим платежам некоторое время, все еще хотите продолжить?]]></string>
     <string name="ln_chan_force_offline_details"><![CDATA[&#9888; <font color=#FF9900>Канал сейчас в оффлайне</font> поэтому попытка закрытия приведет к <a href=http://lightning-wallet.com/using-lightning-wallet#forced-channel-closure>форсированному закрытию</a>, на которое уйдет большая сумма комиссии и больше времени<br><br>Рекомендуется подождать хотя-бы один день чтобы дать пиру шанс появиться в онлайне, все еще хотите продолжить?]]></string>
     <string name="ln_chan_force_details"><![CDATA[&#9888; Учтите, что попытка закрытия канала прямо сейчас приведет к <a href=http://lightning-wallet.com/using-lightning-wallet#forced-channel-closure>форсированному закрытию</a>, на которое уйдет большая сумма комиссии и больше времени, все еще хотите продолжить?]]></string>
-    <string name="ln_chan_close_confirm_address"><![CDATA[Хотите закрыть канал и отправить возвратную Биткоин-транзакцию на следующий адрес?<br><br>%1$s]]></string>
+    <string name="ln_chan_close_confirm_address"><![CDATA[Хотите закрыть канал и отправить возвратную Биткоин-транзакцию на следующий адрес?<br><br><strong>%1$s</strong>]]></string>
     <string name="ln_chan_close_confirm_local">Хотите закрыть канал и отправить возвратную Биткоин-транзакцию обратно в этот кошелек?</string>
-    <string name="ln_chan_actions">Действия</string>
-    <string name="ln_chan_force">Закрыть</string>
+    <string name="ln_chan_force">Force close</string>
 
     <array name="ln_chan_actions_list">
         <item>Передать детали канала</item>
         <item><![CDATA[Передать слепок канала<br><font color=#999999><small>содержит приватные данные</small></font>]]></item>
         <item><![CDATA[Закрыть на адрес<br><font color=#999999><small>c начала скопируйте адрес</small></font>]]></item>
         <item>Закрыть в этот кошелек</item>
+    </array>
+
+    <array name="ln_chan_present">
+        <item><![CDATA[Каналов нет]]></item>
+        <item><![CDATA[Всего %1$s канал]]></item>
+        <item><![CDATA[Всего %1$s канала]]></item>
+        <item><![CDATA[Всего %1$s каналов]]></item>
     </array>
 
     <array name="ln_status_left_blocks">
