@@ -66,18 +66,14 @@ trait HumanTimeDisplay {
 
     case false if scrWidth < 2.5 & bigFont => "MM/dd/yy' <small>'h:mma'</small>'"
     case false if scrWidth < 2.5 => "MM/dd/yy' <small>'h:mma'</small>'"
-
-    case false if bigFont => "MMM dd, yyyy' <small>'h:mma'</small>'"
-    case false => "MMMM dd, yyyy' <small>'h:mma'</small>'"
+    case false => "MMM dd, yyyy' <small>'h:mma'</small>'"
 
     case true if scrWidth < 2.2 & bigFont => "d MMM yyyy' <small>'HH:mm'</small>'"
     case true if scrWidth < 2.2 => "d MMM yyyy' <small>'HH:mm'</small>'"
 
     case true if scrWidth < 2.4 & bigFont => "d MMM yyyy' <small>'HH:mm'</small>'"
     case true if scrWidth < 2.5 => "d MMM yyyy' <small>'HH:mm'</small>'"
-
-    case true if bigFont => "d MMM yyyy' <small>'HH:mm'</small>'"
-    case true => "d MMMM yyyy' <small>'HH:mm'</small>'"
+    case true => "d MMM yyyy' <small>'HH:mm'</small>'"
   }
 
   def when(now: Long, date: Date) = date.getTime match { case ago =>

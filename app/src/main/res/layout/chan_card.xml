@@ -8,7 +8,9 @@
     android:clickable="true">
 
     <LinearLayout
-        style="@style/StandardLinearLayout"
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
         android:padding="@dimen/app_padding">
 
         <LinearLayout style="@style/CardLinearLayoutWhite">
@@ -39,33 +41,73 @@
 
         <LinearLayout style="@style/CardLinearLayoutWhite" android:id="@+id/totalCapacity">
             <TextView style="@style/CardBaseText" android:text="@string/ln_info_capacity"/>
-            <TextView style="@style/CardBaseText" android:gravity="end" android:textColor="@color/shpbr_background" android:id="@+id/totalCapacityText"/>
+
+            <TextView
+                style="@style/CardBaseText"
+                android:textColor="@color/shpbr_background"
+                android:id="@+id/totalCapacityText"
+                android:gravity="end"/>
+
         </LinearLayout>
 
         <LinearLayout style="@style/CardLinearLayoutWhite" android:id="@+id/canSend">
             <TextView style="@style/CardBaseText" android:text="@string/ln_info_can_send"/>
-            <TextView style="@style/CardBaseText" android:gravity="end" android:textColor="@color/shpbr_primary_progress" android:id="@+id/canSendText"/>
+
+            <TextView
+                style="@style/CardBaseText"
+                android:textColor="@color/shpbr_primary_progress"
+                android:id="@+id/canSendText"
+                android:gravity="end"/>
+
         </LinearLayout>
 
         <LinearLayout style="@style/CardLinearLayoutWhite" android:id="@+id/canReceive">
             <TextView style="@style/CardBaseText" android:text="@string/ln_info_can_receive"/>
-            <TextView style="@style/CardBaseText" android:gravity="end" android:textColor="@color/shpbr_secondary_progress" android:id="@+id/canReceiveText"/>
+
+            <TextView
+                style="@style/CardBaseText"
+                android:textColor="@color/shpbr_secondary_progress"
+                android:id="@+id/canReceiveText"
+                android:gravity="end"/>
+
         </LinearLayout>
 
         <LinearLayout style="@style/CardLinearLayoutWhite" android:id="@+id/refundableAmount">
             <TextView style="@style/CardBaseText" android:text="@string/ln_info_refundable"/>
-            <TextView style="@style/CardBaseText" android:gravity="end" android:textColor="#76B041" android:id="@+id/refundableAmountText"/>
+
+            <TextView
+                style="@style/CardBaseText"
+                android:textColor="#76B041"
+                android:id="@+id/refundableAmountText"
+                android:gravity="end"/>
+
         </LinearLayout>
 
         <LinearLayout style="@style/CardLinearLayoutWhite" android:id="@+id/refundFee">
             <TextView style="@style/CardBaseText" android:text="@string/ln_info_fee"/>
-            <TextView style="@style/CardBaseText" android:gravity="end" android:textColor="#E31300" android:id="@+id/refundFeeText"/>
+
+            <TextView
+                style="@style/CardBaseText"
+                android:textColor="#E31300"
+                android:id="@+id/refundFeeText"
+                android:gravity="end"/>
+
         </LinearLayout>
 
         <View
             style="@style/GrayDivider"
             android:layout_marginTop="@dimen/app_padding"
             android:layout_marginBottom="@dimen/app_padding"/>
+
+        <LinearLayout style="@style/CardLinearLayoutWhite" android:id="@+id/startedAt">
+            <TextView style="@style/CardBaseText" android:text="@string/ln_info_started"/>
+            <TextView style="@style/CardBaseText" android:gravity="end" android:id="@+id/startedAtText"/>
+        </LinearLayout>
+
+        <LinearLayout style="@style/CardLinearLayoutWhite" android:id="@+id/closedAt">
+            <TextView style="@style/CardBaseText" android:text="@string/ln_info_closed"/>
+            <TextView style="@style/CardBaseText" android:gravity="end" android:id="@+id/closedAtText"/>
+        </LinearLayout>
 
         <LinearLayout style="@style/CardLinearLayoutWhite" android:id="@+id/paymentsSent">
             <TextView style="@style/CardBaseText" android:text="@string/ln_info_sent"/>
@@ -87,15 +129,23 @@
             <TextView style="@style/CardBaseText" android:gravity="end" android:id="@+id/fundingDepthText"/>
         </LinearLayout>
 
-        <LinearLayout style="@style/CardLinearLayoutWhite" android:id="@+id/startedAt">
-            <TextView style="@style/CardBaseText" android:text="@string/ln_info_started"/>
-            <TextView style="@style/CardBaseText" android:gravity="end" android:id="@+id/startedAtText"/>
-        </LinearLayout>
+        <LinearLayout
+            android:id="@+id/extraInfo"
+            android:orientation="vertical"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
 
-        <LinearLayout style="@style/CardLinearLayoutWhite" android:id="@+id/closedAt">
-            <TextView style="@style/CardBaseText" android:text="@string/ln_info_closed"/>
-            <TextView style="@style/CardBaseText" android:gravity="end" android:id="@+id/closedAtText"/>
-        </LinearLayout>
+            <View
+                style="@style/GrayDivider"
+                android:layout_marginTop="@dimen/app_padding"
+                android:layout_marginBottom="@dimen/app_padding"/>
 
+            <TextView
+                style="@style/BaseText"
+                android:textColor="@color/btc"
+                android:layout_width="wrap_content"
+                android:id="@+id/extraInfoText"/>
+
+        </LinearLayout>
     </LinearLayout>
 </android.support.v7.widget.CardView>

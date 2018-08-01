@@ -67,7 +67,7 @@ case class WaitFundingSignedData(announce: NodeAnnouncement, core: WaitFundingSi
 
 // All the data below will be stored
 case class WaitBroadcastRemoteData(announce: NodeAnnouncement, core: WaitFundingSignedCore, txHash: BinaryData,
-                                 commitments: Commitments, fail: Option[Fail] = None) extends HasCommitments
+                                   commitments: Commitments, fail: Option[Fail] = None) extends HasCommitments
 
 case class WaitFundingDoneData(announce: NodeAnnouncement, our: Option[FundingLocked],
                                their: Option[FundingLocked], fundingTx: Transaction,

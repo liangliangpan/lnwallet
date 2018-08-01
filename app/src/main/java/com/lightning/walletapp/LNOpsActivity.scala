@@ -1,34 +1,65 @@
 package com.lightning.walletapp
 
-import com.lightning.walletapp.Utils._
-import com.lightning.walletapp.ln._
-import android.os.Bundle
-import com.lightning.walletapp.R.string._
-import android.support.v7.widget.Toolbar
-import android.view.{Menu, MenuItem, View, ViewGroup}
 import android.widget._
-import java.util.Date
-
-import com.lightning.walletapp.helper.RichCursor
+import com.lightning.walletapp.ln._
+import com.lightning.walletapp.Utils._
+import com.lightning.walletapp.R.string._
 import com.lightning.walletapp.ln.Channel._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
+
+import fr.acinq.bitcoin.{BinaryData, Satoshi}
+import android.view.{Menu, MenuItem, View, ViewGroup}
+import org.bitcoinj.core.{Block, FilteredBlock, Peer}
 import com.lightning.walletapp.ln.{Channel, ChannelData, RefundingData}
-import com.lightning.walletapp.lnutils.PaymentTable
-import fr.acinq.bitcoin.{BinaryData, MilliSatoshi, Satoshi}
 import github.nisrulz.stackedhorizontalprogressbar.StackedHorizontalProgressBar
+import com.lightning.walletapp.lnutils.IconGetter.scrWidth
+import com.lightning.walletapp.lnutils.PaymentTable
+import com.lightning.walletapp.helper.RichCursor
+import com.lightning.walletapp.ln.Tools.wrap
+import android.support.v7.widget.Toolbar
+import android.os.Bundle
+import java.util.Date
 
 
 class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
-  val localChanCache = for (chan <- app.ChannelManager.all if me canDisplay chan.data) yield chan
-  val onlineChans = app.getResources getStringArray R.array.ln_chan_online
+  val localChanCache = for (c <- app.ChannelManager.all if me canDisplay c.data) yield c
+  lazy val presentChans = app.getResources getStringArray R.array.ln_chan_present
   lazy val gridView = findViewById(R.id.gridView).asInstanceOf[GridView]
   lazy val toolbar = findViewById(R.id.toolbar).asInstanceOf[Toolbar]
+  lazy val otherState = getString(ln_info_status_other)
+  lazy val fundingInfo = getString(ln_info_funding)
   lazy val host = me
+
+  val adapter = new BaseAdapter {
+    def getItem(position: Int) = localChanCache(position)
+    def getItemId(chanPosition: Int) = chanPosition
+    def getCount = localChanCache.size
+
+    def getView(position: Int, savedView: View, parent: ViewGroup) = {
+      val card = if (null == savedView) getLayoutInflater.inflate(R.layout.chan_card, null) else savedView
+      val holder = if (null == card.getTag) new ViewHolder(card) else card.getTag.asInstanceOf[ViewHolder]
+      holder fillView getItem(position)
+      card
+    }
+  }
+
+  val becomeListener = new ChannelListener {
+    override def onBecome: PartialFunction[Transition, Unit] = {
+      case anyStateChange => UITask(adapter.notifyDataSetChanged).run
+    }
+  }
+
+  val blocksListener = new BlocksListener {
+    def onBlocksDownloaded(p: Peer, b: Block, fb: FilteredBlock, left: Int) =
+      if (left < 1) UITask(adapter.notifyDataSetChanged).run
+  }
 
   class ViewHolder(view: View) {
     val stackBar = view.findViewById(R.id.stackBar).asInstanceOf[StackedHorizontalProgressBar]
     val stateAndConnectivity = view.findViewById(R.id.stateAndConnectivity).asInstanceOf[TextView]
     val addressAndKey = view.findViewById(R.id.addressAndKey).asInstanceOf[TextView]
+    val extraInfoText = view.findViewById(R.id.extraInfoText).asInstanceOf[TextView]
+    val extraInfo = view.findViewById(R.id.extraInfo)
 
     val wrappers =
       view.findViewById(R.id.refundableAmount) ::
@@ -55,6 +86,7 @@ class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
     val refundFeeText = view.findViewById(R.id.refundFeeText).asInstanceOf[TextView]
     val closedAtText = view.findViewById(R.id.closedAtText).asInstanceOf[TextView]
     val canSendText = view.findViewById(R.id.canSendText).asInstanceOf[TextView]
+    extraInfo setVisibility View.GONE
     stackBar setMax 1000
 
     def visibleExcept(gone: Int*) =
@@ -76,42 +108,73 @@ class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
         val threshold = math.max(cs.remoteParams.minimumDepth, LNParams.minDepth)
         val txDepth \ _ = LNParams.broadcaster.getStatus(Commitments fundingTxid cs)
         val canSendMsat \ canReceiveMsat = estimateCanSend(chan) -> estimateCanReceive(chan)
-        val valueInFlight = MilliSatoshi(inFlightHtlcs(chan).map(_.add.amount.amount).sum): Satoshi
-        val refundable = MilliSatoshi(Commitments.latestRemoteCommit(cs).spec.toRemoteMsat): Satoshi
-        val valueReceived = MilliSatoshi(getStat(cs.channelId, 1) getOrElse 0L): Satoshi
-        val valueSent = MilliSatoshi(getStat(cs.channelId, 0) getOrElse 0L): Satoshi
+        val valueInFlight = Satoshi(inFlightHtlcs(chan).map(_.add.amount.amount).sum / 1000L)
+        val refundable = Satoshi(Commitments.latestRemoteCommit(cs).spec.toRemoteMsat / 1000L)
+        val canNotReceive = txDepth > 6 && channelAndHop(chan).isEmpty
+        val valueReceived = Satoshi(getStat(cs.channelId, 1) / 1000L)
+        val valueSent = Satoshi(getStat(cs.channelId, 0) / 1000L)
 
         stackBar setProgress (canSendMsat / capacity.amount).toInt
+        fundingDepthText setText fundingInfo.format(txDepth, threshold)
         stackBar setSecondaryProgress (canReceiveMsat / capacity.amount).toInt
-        canReceiveText setText denom.withSign(MilliSatoshi(canReceiveMsat): Satoshi).html
-        canSendText setText denom.withSign(MilliSatoshi(canSendMsat): Satoshi).html
-        paymentsReceivedText setText denom.withSign(valueReceived).html
-        paymentsInFlightText setText denom.withSign(valueInFlight).html
+        canReceiveText setText denom.withSign(Satoshi(canReceiveMsat) / 1000L).html
+        canSendText setText denom.withSign(Satoshi(canSendMsat) / 1000L).html
         refundableAmountText setText denom.withSign(refundable).html
         totalCapacityText setText denom.withSign(capacity).html
-        paymentsSentText setText denom.withSign(valueSent).html
         refundFeeText setText denom.withSign(commitFee).html
-        fundingDepthText setText s"$txDepth / $threshold"
         startedAtText setText started.html
 
-        visibleExcept(R.id.fundingDepth, R.id.closedAt)
+        paymentsReceivedText setText sumOrNothing(valueReceived).html
+        paymentsInFlightText setText sumOrNothing(valueInFlight).html
+        paymentsSentText setText sumOrNothing(valueSent).html
+
+        chan.data match {
+          case _: WaitFundingDoneData =>
+            visibleExcept(R.id.stackBar, R.id.canSend, R.id.canReceive, R.id.closedAt,
+              R.id.paymentsSent, R.id.paymentsReceived, R.id.paymentsInFlight)
+
+          case remote: WaitBroadcastRemoteData =>
+            if (remote.fail.isDefined) extraInfo setVisibility View.VISIBLE
+            if (remote.fail.isDefined) extraInfoText setText remote.fail.get.reason
+            visibleExcept(R.id.stackBar, R.id.canSend, R.id.canReceive, R.id.closedAt,
+              R.id.paymentsSent, R.id.paymentsReceived, R.id.paymentsInFlight)
+
+          case _: NormalData if isOperational(chan) =>
+            if (canNotReceive) extraInfo setVisibility View.VISIBLE
+            if (canNotReceive) extraInfoText setText ln_info_no_receive
+            visibleExcept(R.id.fundingDepth, R.id.closedAt)
+
+          case _: NormalData | _: NegotiationsData =>
+            extraInfoText setText ln_info_coop_attempt
+            extraInfo setVisibility View.VISIBLE
+
+            visibleExcept(R.id.stackBar, R.id.canSend, R.id.canReceive,
+              R.id.refundFee, R.id.fundingDepth, R.id.closedAt)
+
+          case cd: ClosingData =>
+            val closed = me time new Date(cd.closedAt)
+            extraInfo setVisibility View.VISIBLE
+            extraInfoText setText closedBy(cd)
+            closedAtText setText closed.html
+
+            visibleExcept(R.id.stackBar, R.id.canSend, R.id.canReceive,
+              R.id.refundFee, R.id.paymentsSent, R.id.paymentsReceived,
+              R.id.paymentsInFlight, R.id.fundingDepth)
+
+          case otherwise =>
+            visibleExcept(R.id.stackBar, R.id.totalCapacity, R.id.canSend,
+              R.id.canReceive, R.id.refundFee, R.id.closedAt, R.id.paymentsSent,
+              R.id.paymentsReceived, R.id.paymentsInFlight, R.id.fundingDepth)
+        }
       }
     }
 
     view setTag this
   }
 
-  class ChanFitAdapter extends BaseAdapter {
-    def getItem(position: Int) = localChanCache(position)
-    def getItemId(chanPosition: Int) = chanPosition
-    def getCount = localChanCache.size
-    
-    def getView(position: Int, savedView: View, parent: ViewGroup) = {
-      val card = if (null == savedView) getLayoutInflater.inflate(R.layout.chan_card, null) else savedView
-      val holder = if (null == card.getTag) new ViewHolder(card) else card.getTag.asInstanceOf[ViewHolder]
-      holder fillView getItem(position)
-      card
-    }
+  override def onDestroy = wrap(super.onDestroy) {
+    app.kit.peerGroup removeBlocksDownloadedEventListener blocksListener
+    for (chan <- localChanCache) chan.listeners -= becomeListener
   }
 
   override def onOptionsItemSelected(m: MenuItem) = {
@@ -125,42 +188,48 @@ class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
   }
 
   def INIT(state: Bundle) = if (app.isAlive) {
-    setContentView(R.layout.activity_ln_ops)
-    gridView setOnItemClickListener onTap(println)
-
-    gridView.setAdapter(new ChanFitAdapter)
-    gridView.setNumColumns(1)
-
-    me setSupportActionBar toolbar
-    getSupportActionBar setTitle action_ln_details
-    setOnlineChansNum
+    wrap(me setSupportActionBar toolbar)(me setContentView R.layout.activity_ln_ops)
+    wrap(gridView setAdapter adapter)(getSupportActionBar setTitle action_ln_details)
+    getSupportActionBar setSubtitle app.plurOrZero(presentChans, localChanCache.size)
+    app.kit.peerGroup addBlocksDownloadedEventListener blocksListener
+    for (chan <- localChanCache) chan.listeners += becomeListener
+    gridView setNumColumns math.round(scrWidth / 2.4).toInt
   } else me exitTo classOf[MainActivity]
 
-  def stateStatusColor(channel: Channel): String = channel.state match {
-    case OPEN if isOperational(channel) => s"<font color='#76B041'>$OPEN</font>"
-    case NEGOTIATIONS => s"<font color='#FF9900'>$NEGOTIATIONS</font>"
-    case OPEN => s"<font color='#76B041'>SHUTDOWN</font>"
-    case state => s"<font color='#777777'>$state</font>"
+  // UTILS
+
+  def stateStatusColor(c: Channel): String = c.state match {
+    case OPEN if isOperational(c) => me getString ln_info_status_open
+    case WAIT_FUNDING_DONE => me getString ln_info_status_opening
+    case NEGOTIATIONS => me getString ln_info_status_negotiations
+    case OPEN => me getString ln_info_status_shutdown
+    case _ => otherState format c.state
   }
 
-  def connectivityStatusColor(channel: Channel): String = channel.state match {
-    case OFFLINE | CLOSING => s"<font color='#777777'><small>disconnected</small></font>"
-    case _ => s"<font color='#76B041'><small>online</small></font>"
+  def connectivityStatusColor(c: Channel) = c.state match {
+    case OFFLINE | CLOSING => me getString ln_info_state_offline
+    case _ => me getString ln_info_state_online
   }
 
-  def setOnlineChansNum = {
-    val num = app.ChannelManager.notClosingOrRefunding.size
-    getSupportActionBar setSubtitle app.plurOrZero(onlineChans, num)
-  }
+  def closedBy(cd: ClosingData) =
+    if (cd.remoteCommit.nonEmpty) me getString ln_info_close_remote
+    else if (cd.nextRemoteCommit.nonEmpty) me getString ln_info_close_remote
+    else if (cd.mutualClose.nonEmpty) me getString ln_info_close_coop
+    else me getString ln_info_close_local
 
   def canDisplay(chanData: ChannelData) = chanData match {
     case ref: RefundingData => ref.remoteLatestPoint.isDefined
     case otherwise => true
   }
 
+  def sumOrNothing(sum: Satoshi) = sum match {
+    case Satoshi(0L) => me getString ln_info_nothing
+    case something => denom withSign something
+  }
+
   def getStat(chanId: BinaryData, direction: Int) = {
     // Direction = 0 = untgoing = lastMast, = 1 = incoming = firstMsat
     val cursor = LNParams.db.select(PaymentTable.selectStatSql, chanId, direction)
-    RichCursor(cursor) headTry { case RichCursor(cursor1) => cursor1 getLong direction }
+    RichCursor(cursor) headTry { case RichCursor(с1) => с1 getLong direction } getOrElse 0L
   }
 }

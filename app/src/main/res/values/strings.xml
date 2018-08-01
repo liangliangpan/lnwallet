@@ -218,6 +218,22 @@
     <string name="ln_info_started">started</string>
     <string name="ln_info_closed">closed</string>
 
+    <string name="ln_info_funding">%1$s of %2$s</string>
+    <string name="ln_info_close_coop">Closed cooperatively</string>
+    <string name="ln_info_close_remote">Closed by remote peer</string>
+    <string name="ln_info_close_local">Closed by local wallet</string>
+    <string name="ln_info_no_receive">Receiving is not enabled by peer</string>
+    <string name="ln_info_coop_attempt">Trying to close cooperatively&#8230;</string>
+    <string name="ln_info_state_offline"><![CDATA[<font color=#777777><small>disconnected</small></font>]]></string>
+    <string name="ln_info_state_online"><![CDATA[<font color=#76B041><small>online</small></font>]]></string>
+    <string name="ln_info_nothing"><![CDATA[<i>nothing</i>]]></string>
+
+    <string name="ln_info_status_open"><![CDATA[<font color=#76B041>OPEN</font>]]></string>
+    <string name="ln_info_status_opening"><![CDATA[<font color=#FF9900>OPENING</font>]]></string>
+    <string name="ln_info_status_shutdown"><![CDATA[<font color=#FF9900>SHUTDOWN</font>]]></string>
+    <string name="ln_info_status_negotiations"><![CDATA[<font color=#FF9900>NEGOTIATIONS</font>]]></string>
+    <string name="ln_info_status_other"><![CDATA[<font color=#777777>%1$s</font>]]></string>
+
     <string name="ln_chan_close_inflight_details"><![CDATA[&#9888; <font color=#FF9900>Pending payments are present</font> so cooperative closing is going to be postponed until they are resolved<br><br>It it recommended to not close a channel right now and let those stuck payments to eventually become failed or fulfilled, would you still like to proceed?]]></string>
     <string name="ln_chan_force_offline_details"><![CDATA[&#9888; <font color=#FF9900>Channel is offline now</font> so shutting it down will result in a <a href=http://lightning-wallet.com/using-lightning-wallet#forced-channel-closure>forced channel closing</a> which requires additional fees and time<br><br>It is recommended to wait at least one day for a remote peer to get back online before doing this, would you still like to proceed?]]></string>
     <string name="ln_chan_force_details"><![CDATA[&#9888; Note that shutting this channel down right now will result in a <a href=http://lightning-wallet.com/using-lightning-wallet#forced-channel-closure>forced channel closing</a> which requires additional fees and time, would you still like to proceed?]]></string>
@@ -233,10 +249,10 @@
         <item>Close to this wallet</item>
     </array>
 
-    <array name="ln_chan_online">
-        <item><![CDATA[No alive channels]]></item>
-        <item><![CDATA[%1$s channel is alive]]></item>
-        <item><![CDATA[%1$s channels are alive]]></item>
+    <array name="ln_chan_present">
+        <item><![CDATA[No channels are present]]></item>
+        <item><![CDATA[%1$s channel in total]]></item>
+        <item><![CDATA[%1$s channels in total]]></item>
     </array>
 
     <array name="ln_status_left_blocks">
