@@ -167,6 +167,7 @@ trait TimerActivity extends AppCompatActivity { me =>
   implicit def str2View(textFieldData: CharSequence): LinearLayout = {
     val view = getLayoutInflater.inflate(R.layout.frag_top_tip, null).asInstanceOf[LinearLayout]
     val contentTextField = Utils clickableTextField view.findViewById(R.id.titleTip)
+    contentTextField setTextIsSelectable true
     contentTextField setText textFieldData
     view setBackgroundColor 0x22AAAAAA
     view
@@ -307,7 +308,6 @@ class RateManager(extra: String, val content: View) { me =>
 trait PayData {
   // Emptying a wallet needs special handling
   def isAll = app.kit.conf1Balance equals cn
-  def onClick(activity: TimerActivity)
   def getRequest: SendRequest
   def destination: String
   def cn: Coin
@@ -315,14 +315,11 @@ trait PayData {
 
 case class AddrData(cn: Coin, address: Address) extends PayData {
   def getRequest = if (isAll) emptyWallet(address) else to(address, cn)
-  def onClick(activity: TimerActivity) = app setBuffer address.toString
   def destination = humanSix(address.toString)
 }
 
 case class P2WSHData(cn: Coin, pay2wsh: Script) extends PayData {
-  // This will only be used for funding of LN payment channels as destination is unreadable
   def getRequest = if (isAll) emptyWallet(app.params, pay2wsh) else to(app.params, pay2wsh, cn)
-  def onClick(activity: TimerActivity) = activity goTo classOf[LNOpsActivity]
   def destination = app getString txs_p2wsh
 }
 

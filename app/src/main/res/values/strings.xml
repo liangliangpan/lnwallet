@@ -125,7 +125,7 @@
     <string name="txs_sum_in"><![CDATA[<font color=#76B041>%1$s</font>]]></string>
     <string name="txs_view_outside">View on SmartBit site</string>
     <string name="txs_share_body">Share raw transaction</string>
-    <string name="txs_p2wsh">Payment channel funding</string>
+    <string name="txs_p2wsh">Channel funding</string>
 
     <array name="txs_confs">
         <item><![CDATA[<strong>awaiting&#160;confirmation</strong>]]></item>
