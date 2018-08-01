@@ -120,9 +120,9 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
       case chan \ HTLCExpiryException(_, htlc) =>
         val paymentHash = htlc.add.paymentHash.toString
-        val peerKey = chan.data.announce.nodeId.toString
-        val msg = app.getString(err_ln_expired).format(peerKey, paymentHash)
-        UITask(host showForm negTextBuilder(dialog_ok, msg.html).create).run
+        // Inform user about situation instead of force-closing automatically
+        val bld = negTextBuilder(dialog_ok, app.getString(err_ln_expired).format(paymentHash).html)
+        UITask(host showForm bld.setCustomTitle(chan.data.announce.toString.html).create).run
 
       case _ \ internal =>
         // Internal error has happened, show stack trace
