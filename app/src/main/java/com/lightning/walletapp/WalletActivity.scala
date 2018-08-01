@@ -140,7 +140,7 @@ class WalletActivity extends NfcReaderActivity with ScanActivity { me =>
       case uri: BitcoinURI => FragWallet.worker.sendBtcPopup(uri.getAddress)(none) setSum Try(uri.getAmount)
       case pr: PaymentRequest if app.ChannelManager.notClosingOrRefunding.isEmpty => maybeOfferBatch(pr)
       case pr: PaymentRequest => FragWallet.worker sendPayment pr
-      case FragWallet.REDIRECT => goChanDetails(null)
+      case FragWallet.REDIRECT => goOps(null)
       case _ =>
     }
   }
@@ -209,15 +209,9 @@ class WalletActivity extends NfcReaderActivity with ScanActivity { me =>
     }
   }
 
-  def goChanDetails(top: View): Unit = {
-    // Always return Unit to prevent DoNotEraseValue
-    val nothingToShow = app.ChannelManager.all.isEmpty
-    if (nothingToShow) app toast ln_receive_nochan
-    else me goTo classOf[LNOpsActivity]
-  }
-
   val tokensPrice = MilliSatoshi(1000000L)
-  def goLNStart = me goTo classOf[LNStartActivity]
+  def goLNStart: Unit = me goTo classOf[LNStartActivity]
+  def goOps(top: View): Unit = me goTo classOf[LNOpsActivity]
   def goAddChannel(top: View) = if (OlympusWrap.backupExhausted) {
     val humanPrice = s"${coloredIn apply tokensPrice} <font color=#999999>${msatInFiatHuman apply tokensPrice}</font>"
     val warn = baseTextBuilder(getString(tokens_warn).format(humanPrice).html).setCustomTitle(me getString action_ln_open)
