@@ -8,7 +8,9 @@ import com.lightning.walletapp.R.string._
 import com.lightning.walletapp.ln.Channel._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
 import com.lightning.walletapp.lnutils.ImplicitJsonFormats._
+
 import fr.acinq.bitcoin.{BinaryData, Satoshi}
+import com.lightning.walletapp.ln.Tools.{none, wrap}
 import android.view.{Menu, MenuItem, View, ViewGroup}
 import org.bitcoinj.core.{Block, FilteredBlock, Peer}
 import com.lightning.walletapp.ln.{Channel, ChannelData, RefundingData}
@@ -16,14 +18,10 @@ import github.nisrulz.stackedhorizontalprogressbar.StackedHorizontalProgressBar
 import com.lightning.walletapp.lnutils.IconGetter.scrWidth
 import com.lightning.walletapp.lnutils.PaymentTable
 import com.lightning.walletapp.helper.RichCursor
-import com.lightning.walletapp.ln.Tools.{none, wrap}
 import android.support.v7.widget.Toolbar
+import org.bitcoinj.script.ScriptBuilder
 import android.os.Bundle
 import java.util.Date
-
-import org.bitcoinj.script.ScriptBuilder
-
-import scala.util.Success
 
 
 class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>

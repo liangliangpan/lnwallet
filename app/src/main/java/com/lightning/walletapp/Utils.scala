@@ -166,9 +166,7 @@ trait TimerActivity extends AppCompatActivity { me =>
   def INIT(savedInstanceState: Bundle): Unit
   implicit def str2View(textFieldData: CharSequence): LinearLayout = {
     val view = getLayoutInflater.inflate(R.layout.frag_top_tip, null).asInstanceOf[LinearLayout]
-    val contentTextField = Utils clickableTextField view.findViewById(R.id.titleTip)
-    contentTextField setTextIsSelectable true
-    contentTextField setText textFieldData
+    Utils clickableTextField view.findViewById(R.id.titleTip) setText textFieldData
     view setBackgroundColor 0x22AAAAAA
     view
   }
