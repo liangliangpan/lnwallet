@@ -142,7 +142,7 @@
 
             <TextView
                 style="@style/BaseText"
-                android:textColor="@color/btc"
+                android:textColor="@color/bg"
                 android:layout_width="wrap_content"
                 android:id="@+id/extraInfoText"/>
 
