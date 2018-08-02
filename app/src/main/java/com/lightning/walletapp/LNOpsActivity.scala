@@ -103,9 +103,10 @@ class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
 
     def fillView(chan: Channel) = {
       val state = stateStatusColor(chan)
-      val connectivity = connectivityStatusColor(chan)
+      val connect = connectivityStatusColor(chan)
+      val stateConnect = s"<strong>$state</strong><br>$connect"
       addressAndKey setText chan.data.announce.toString.html
-      stateAndConnectivity setText s"$state<br>$connectivity".html
+      stateAndConnectivity setText stateConnect.html
       extraInfo setVisibility View.GONE
 
       chan { cs =>
@@ -160,15 +161,14 @@ class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
             val closeDate = new Date(cd.closedAt)
             closedAtText setText time(closeDate).html
 
-            val refundFeeId = if (cd.mutualClose.isEmpty) -1 else R.id.refundFee
-            visibleExcept(R.id.stackBar, R.id.canSend, R.id.canReceive, refundFeeId,
-              R.id.paymentsSent, R.id.fundingDepth, R.id.paymentsReceived,
-              R.id.paymentsInFlight)
+            visibleExcept(R.id.stackBar, R.id.canSend, R.id.canReceive,
+              if (cd.mutualClose.isEmpty) -1 else R.id.refundFee,
+              R.id.fundingDepth, R.id.paymentsInFlight)
 
           case otherwise =>
-            visibleExcept(R.id.stackBar, R.id.totalCapacity, R.id.canSend,
-              R.id.canReceive, R.id.refundFee, R.id.closedAt, R.id.paymentsSent,
-              R.id.paymentsReceived, R.id.paymentsInFlight, R.id.fundingDepth)
+            visibleExcept(R.id.stackBar, R.id.canSend, R.id.canReceive,
+              R.id.refundFee, R.id.closedAt, R.id.paymentsSent, R.id.fundingDepth,
+              R.id.paymentsReceived, R.id.paymentsInFlight)
         }
 
         // MENU PART
@@ -178,9 +178,10 @@ class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
             none, baseTextBuilder(channelClosureWarning.html), dialog_ok, dialog_cancel)
 
         view setOnClickListener onButtonTap {
+          val finalActions = if (CLOSING == chan.state) chanActions take 1 else chanActions
           val lst = getLayoutInflater.inflate(R.layout.frag_center_list, null).asInstanceOf[ListView]
           val alert = showForm(negBuilder(dialog_cancel, chan.data.announce.toString.html, lst).create)
-          lst setAdapter new ArrayAdapter(me, R.layout.frag_top_tip, R.id.titleTip, chanActions)
+          lst setAdapter new ArrayAdapter(me, R.layout.frag_top_tip, R.id.titleTip, finalActions)
           lst setDividerHeight 0
           lst setDivider null
 
