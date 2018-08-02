@@ -20,8 +20,8 @@
         app:contentInsetEnd="@dimen/app_padding"/>
 
     <GridView
+        android:verticalSpacing="25dp"
         android:horizontalSpacing="@dimen/app_padding"
-        android:verticalSpacing="@dimen/app_padding"
         android:scrollbarStyle="outsideOverlay"
         android:padding="@dimen/app_padding"
         android:layout_height="match_parent"
