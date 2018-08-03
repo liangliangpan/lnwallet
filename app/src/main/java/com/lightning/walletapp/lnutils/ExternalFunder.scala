@@ -8,8 +8,9 @@ import com.lightning.walletapp.ln.wire.FundMsg._
 import com.lightning.walletapp.lnutils.JsonHttpUtils._
 import com.lightning.walletapp.lnutils.ImplicitJsonFormats._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
-import com.lightning.walletapp.ln.Tools.{log, none}
+
 import rx.lang.scala.{Observable => Obs}
+import com.lightning.walletapp.ln.Tools.none
 import java.util
 
 

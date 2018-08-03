@@ -10,7 +10,7 @@
     </style>
 
     <style name="StandardLinearLayoutPage" parent="StandardLinearLayout">
-        <item name="android:background">#FFF5F5F5</item>
+        <item name="android:background">#FFE6EBED</item>
     </style>
 
     <style name="LineLinearLayout">
