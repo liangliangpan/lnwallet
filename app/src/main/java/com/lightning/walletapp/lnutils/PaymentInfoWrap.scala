@@ -258,10 +258,14 @@ object GossipCatcher extends ChannelListener {
   // Catch ChannelUpdate to enable funds receiving
 
   override def onProcessSuccess = {
-    case (chan, norm: NormalData, _: CMDBestHeight) if norm.commitments.extraHop.isEmpty => for {
-      blockHeight \ txIndex <- OlympusWrap.getShortId(txid = Commitments fundingTxid norm.commitments)
-      shortChannelId <- Tools.toShortIdOpt(blockHeight, txIndex, norm.commitments.commitInput.outPoint.index)
-    } chan process Hop(Tools.randomPrivKey.publicKey, shortChannelId, 0, 0L, 0L, 0L)
+    case (chan, norm: NormalData, _: CMDBestHeight)
+      // GUARD: no hop at all yet, obtain a dummy one
+      if norm.commitments.extraHop.isEmpty =>
+
+      for {
+        blockHeight \ txIndex <- OlympusWrap.getShortId(txid = Commitments fundingTxid norm.commitments)
+        shortChannelId <- Tools.toShortIdOpt(blockHeight, txIndex, norm.commitments.commitInput.outPoint.index)
+      } chan process Hop(Tools.randomPrivKey.publicKey, shortChannelId, 0, 0L, 0L, 0L)
 
     case (chan, norm: NormalData, upd: ChannelUpdate)
       // GUARD: we already have an old or empty Hop, replace it with a new one
