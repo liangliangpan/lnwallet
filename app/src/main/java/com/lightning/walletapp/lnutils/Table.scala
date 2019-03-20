@@ -4,7 +4,7 @@ import spray.json._
 import android.database.sqlite._
 import com.lightning.walletapp.ln.PaymentInfo._
 import com.lightning.walletapp.lnutils.ImplicitJsonFormats._
-import com.lightning.walletapp.ln.Tools.{random, none, runAnd}
+import com.lightning.walletapp.ln.Tools.{random, runAnd}
 import com.lightning.walletapp.lnutils.olympus.CloudData
 import android.content.Context
 import android.net.Uri
@@ -19,10 +19,22 @@ object OlympusTable extends Table {
   val killSql = s"DELETE FROM $table WHERE $identifier = ?"
 
   val createSql = s"""
-    CREATE TABLE $table (
+    CREATE TABLE IF NOT EXISTS $table (
       $id INTEGER PRIMARY KEY AUTOINCREMENT, $identifier TEXT NOT NULL UNIQUE,
       $url STRING NOT NULL UNIQUE, $data STRING NOT NULL, $auth INTEGER NOT NULL,
       $order INTEGER NOT NULL, $removable INTEGER NOT NULL
+    )"""
+}
+
+object OlympusLogTable extends Table {
+  val (table, tokensUsed, explanation, stamp) = ("olympuslog", "tokensused", "explanation", "stamp")
+  val newSql = s"INSERT INTO $table ($tokensUsed, $explanation, $stamp) VALUES (?, ?, ?)"
+  val selectAllSql = s"SELECT * FROM $table ORDER BY $stamp DESC LIMIT 6"
+
+  val createSql = s"""
+    CREATE TABLE IF NOT EXISTS $table (
+      $id INTEGER PRIMARY KEY AUTOINCREMENT, $tokensUsed INTEGER NOT NULL,
+      $explanation STRING NOT NULL, $stamp INTEGER NOT NULL
     )"""
 }
 
@@ -34,7 +46,7 @@ object ChannelTable extends Table {
   val killSql = s"DELETE FROM $table WHERE $identifier = ?"
 
   val createSql = s"""
-    CREATE TABLE $table (
+    CREATE TABLE IF NOT EXISTS $table (
       $id INTEGER PRIMARY KEY AUTOINCREMENT,
       $identifier TEXT NOT NULL UNIQUE,
       $data STRING NOT NULL
@@ -48,36 +60,32 @@ object BadEntityTable extends Table {
   val updSql = s"UPDATE $table SET $expire = ?, $amount = ? WHERE $resId = ?"
 
   val createSql = s"""
-    CREATE TABLE $table (
+    CREATE TABLE IF NOT EXISTS $table (
       $id INTEGER PRIMARY KEY AUTOINCREMENT,
       $resId STRING NOT NULL UNIQUE,
       $expire INTEGER NOT NULL,
       $amount INTEGER NOT NULL
     );
 
-    /* id index is created automatically */
-    /* unique resId index is created automatically */
-    CREATE INDEX idx1$table ON $table ($expire, $amount);
-    COMMIT"""
+    /* resId index is created automatically because this field is UNIQUE */
+    CREATE INDEX IF NOT EXISTS idx1$table ON $table ($expire, $amount);
+    COMMIT
+    """
 }
 
 object RouteTable extends Table {
-  val (table, path, targetNode, expire) = Tuple4("route", "path", "targetNode", "expire")
-  val newSql = s"INSERT OR IGNORE INTO $table ($path, $targetNode, $expire) VALUES (?, ?, ?)"
-  val updSql = s"UPDATE $table SET $path = ?, $expire = ? WHERE $targetNode = ?"
-  val selectSql = s"SELECT * FROM $table WHERE $targetNode = ? AND $expire > ?"
+  val (table, path, targetNode) = Tuple3("route", "path", "targetNode")
+  val newSql = s"INSERT OR IGNORE INTO $table ($path, $targetNode) VALUES (?, ?)"
+  val updSql = s"UPDATE $table SET $path = ? WHERE $targetNode = ?"
+  val selectSql = s"SELECT * FROM $table WHERE $targetNode = ?"
   val killSql = s"DELETE FROM $table WHERE $targetNode = ?"
 
   val createSql = s"""
-    CREATE TABLE $table (
-      $id INTEGER PRIMARY KEY AUTOINCREMENT, $path STRING NOT NULL,
-      $targetNode STRING NOT NULL UNIQUE, $expire INTEGER NOT NULL
-    );
-
-    /* id index is created automatically */
-    /* unique targetNode index is created automatically */
-    CREATE INDEX idx1$table ON $table ($targetNode, $expire);
-    COMMIT"""
+    CREATE TABLE IF NOT EXISTS $table (
+      $id INTEGER PRIMARY KEY AUTOINCREMENT,
+      $targetNode STRING NOT NULL UNIQUE,
+      $path STRING NOT NULL
+    )"""
 }
 
 object PaymentTable extends Table {
@@ -89,57 +97,67 @@ object PaymentTable extends Table {
 
   // Selecting
   val selectSql = s"SELECT * FROM $table WHERE $hash = ?"
-  val selectStatSql = s"SELECT SUM($lastMsat), SUM($firstMsat) FROM $table WHERE $chanId = ? AND $incoming = ?"
-  val selectRecentSql = s"SELECT * FROM $table WHERE $status IN ($WAITING, $SUCCESS, $FAILURE, $FROZEN) ORDER BY $id DESC LIMIT 48"
+  val selectRecentSql = s"SELECT * FROM $table ORDER BY $id DESC LIMIT 48"
+  val selectPaymentNumSql = s"SELECT count($hash) FROM $table WHERE $status = $SUCCESS AND $chanId = ?"
   val searchSql = s"SELECT * FROM $table WHERE $hash IN (SELECT $hash FROM $fts$table WHERE $search MATCH ? LIMIT 24)"
 
   // Updating, creating
   val updOkOutgoingSql = s"UPDATE $table SET $status = $SUCCESS, $preimage = ?, $chanId = ? WHERE $hash = ?"
   val updOkIncomingSql = s"UPDATE $table SET $status = $SUCCESS, $firstMsat = ?, $stamp = ?, $chanId = ? WHERE $hash = ?"
-  val updLastParamsSql = s"UPDATE $table SET $status = $WAITING, $lastMsat = ?, $lastExpiry = ? WHERE $hash = ?"
-  val updFailWaitingAndFrozenSql = s"UPDATE $table SET $status = $FAILURE WHERE $status IN ($WAITING, $FROZEN)"
-  val updStatusSql = s"UPDATE $table SET $status = ? WHERE $hash = ?"
+  val updLastParamsSql = s"UPDATE $table SET $status = $WAITING, $firstMsat = ?, $lastMsat = ?, $lastExpiry = ? WHERE $hash = ?"
+  // Frozen payment may become fulfilled but then get overridden on restart unless we check for status
+  val updStatusSql = s"UPDATE $table SET $status = ? WHERE $hash = ? AND $status <> $SUCCESS"
 
-  val createVSql = s"""
-    CREATE VIRTUAL TABLE $fts$table
-    USING $fts($search, $hash)"""
+  val updFailWaitingAndFrozenSql = s"""
+    UPDATE $table SET $status = $FAILURE /* automatically fail those payments which... */
+    WHERE ($status IN ($WAITING, $FROZEN) AND $incoming = 0) /* outgoing and pending or broken */
+    OR ($status IN ($WAITING, 0) AND $incoming = 1 AND $stamp < ?) /* incoming and expired by now */"""
 
-  val createSql = s"""
-    CREATE TABLE $table (
+  // Once incoming or outgoing payment is settled we can search it by various metadata
+  val createVSql = s"CREATE VIRTUAL TABLE IF NOT EXISTS $fts$table USING $fts($search, $hash)"
+
+  val reCreateSql = s"""
+    CREATE TABLE IF NOT EXISTS $table (
       $id INTEGER PRIMARY KEY AUTOINCREMENT, $pr STRING NOT NULL, $preimage STRING NOT NULL, $incoming INTEGER NOT NULL,
       $status INTEGER NOT NULL, $stamp INTEGER NOT NULL, $description STRING NOT NULL, $hash STRING NOT NULL UNIQUE,
       $firstMsat INTEGER NOT NULL, $lastMsat INTEGER NOT NULL, $lastExpiry INTEGER NOT NULL, $chanId STRING NOT NULL
     );
 
-    /* id index is created automatically */
-    /* hash index is created automatically */
-    CREATE INDEX idx1$table ON $table ($status);
-    CREATE INDEX idx2$table ON $table ($chanId);
-    COMMIT"""
+    DROP INDEX IF EXISTS idx1$table;
+    /* hash index is created automatically because this field is UNIQUE */
+    CREATE INDEX IF NOT EXISTS idx1$table ON $table ($status, $incoming, $stamp);
+    CREATE INDEX IF NOT EXISTS idx2$table ON $table ($chanId);
+    COMMIT
+    """
 }
 
-object RevokedTable extends Table {
-  val (table, h160, expiry, number) = ("revoked", "h160", "expiry", "number")
-  val newSql = s"INSERT INTO $table ($h160, $expiry, $number) VALUES (?, ?, ?)"
-  val selectSql = s"SELECT * FROM $table WHERE $number = ?"
+object RevokedInfoTable extends Table {
+  val (table, txId, chanId, myBalance, info, uploaded) = ("revokedinfo", "txid", "chanid", "mybalance", "info", "uploaded")
+  val selectLocalSql = s"SELECT * FROM $table WHERE $chanId = ? AND $myBalance < ? AND $uploaded = 0 ORDER BY $myBalance ASC LIMIT 200"
+  val newSql = s"INSERT INTO $table ($txId, $chanId, $myBalance, $info, $uploaded) VALUES (?, ?, ?, ?, 0)"
+  val setUploadedSql = s"UPDATE $table SET $uploaded = 1 WHERE $txId = ?"
+  val selectTxIdSql = s"SELECT * FROM $table WHERE $txId = ?"
+  val killSql = s"DELETE FROM $table WHERE $chanId = ?"
 
   val createSql = s"""
-    CREATE TABLE $table (
-      $id INTEGER PRIMARY KEY AUTOINCREMENT, $h160 STRING NOT NULL,
-      $expiry INTEGER NOT NULL, $number INTEGER NOT NULL
+    CREATE TABLE IF NOT EXISTS $table (
+      $id INTEGER PRIMARY KEY AUTOINCREMENT, $txId STRING NOT NULL,
+      $chanId STRING NOT NULL, $myBalance INTEGER NOT NULL,
+      $info STRING NOT NULL, $uploaded INTEGER NOT NULL
     );
 
-    /* id index is created automatically */
-    CREATE INDEX idx1$table ON $table ($number);
-    COMMIT"""
+    CREATE INDEX IF NOT EXISTS idx2$table ON $table ($chanId, $myBalance, $uploaded);
+    CREATE INDEX IF NOT EXISTS idx1$table ON $table ($txId);
+    COMMIT
+    """
 }
 
 trait Table { val (id, fts) = "_id" -> "fts4" }
 class LNOpenHelper(context: Context, name: String)
-  extends SQLiteOpenHelper(context, name, null, 1) {
+extends SQLiteOpenHelper(context, name, null, 5) {
 
   val base = getWritableDatabase
-  def onUpgrade(dbs: SQLiteDatabase, v0: Int, v1: Int) = none
+  // Note: BinaryData and PublicKey should always yield raw strings for this to work
   def change(sql: String, params: Any*) = base.execSQL(sql, params.map(_.toString).toArray)
   def select(sql: String, params: Any*) = base.rawQuery(sql, params.map(_.toString).toArray)
   def sqlPath(tbl: String) = Uri parse s"sqlite://com.lightning.walletapp/table/$tbl"
@@ -150,13 +168,15 @@ class LNOpenHelper(context: Context, name: String)
   } finally base.endTransaction
 
   def onCreate(dbs: SQLiteDatabase) = {
+    dbs execSQL RevokedInfoTable.createSql
     dbs execSQL BadEntityTable.createSql
+    dbs execSQL PaymentTable.reCreateSql
     dbs execSQL PaymentTable.createVSql
-    dbs execSQL PaymentTable.createSql
     dbs execSQL ChannelTable.createSql
-    dbs execSQL OlympusTable.createSql
-    dbs execSQL RevokedTable.createSql
     dbs execSQL RouteTable.createSql
+
+    dbs execSQL OlympusLogTable.createSql
+    dbs execSQL OlympusTable.createSql
 
     // Randomize an order of two available default servers
     val (ord1, ord2) = if (random.nextBoolean) ("0", "1") else ("1", "0")
@@ -165,5 +185,17 @@ class LNOpenHelper(context: Context, name: String)
     val dev2: Array[AnyRef] = Array("server-2", "https://b.lightning-wallet.com:9103", emptyData, "0", ord2, "1")
     dbs.execSQL(OlympusTable.newSql, dev1)
     dbs.execSQL(OlympusTable.newSql, dev2)
+  }
+
+  def onUpgrade(dbs: SQLiteDatabase, v0: Int, v1: Int) = {
+    // Old version of RouteTable had a useless expiry column
+    dbs execSQL s"DROP TABLE IF EXISTS ${RouteTable.table}"
+
+    // Should work even for updates across many version ranges
+    // because each table and index has CREATE IF EXISTS prefix
+    dbs execSQL RevokedInfoTable.createSql
+    dbs execSQL OlympusLogTable.createSql
+    dbs execSQL PaymentTable.reCreateSql
+    dbs execSQL RouteTable.createSql
   }
 }

@@ -8,20 +8,21 @@ import com.lightning.walletapp.lnutils.ImplicitConversions._
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import android.text.Layout.Alignment.ALIGN_NORMAL
 import android.graphics.Bitmap.Config.ARGB_8888
+import android.support.v4.content.FileProvider
 import com.google.zxing.qrcode.QRCodeWriter
 import android.graphics.Bitmap.createBitmap
+import android.transition.TransitionManager
 import fr.acinq.bitcoin.BinaryData
 import org.bitcoinj.core.Address
 import android.content.Intent
 import android.view.View
-import android.net.Uri
+import android.os.Bundle
 
 import android.widget.{ImageButton, ImageView, LinearLayout}
 import com.google.zxing.{BarcodeFormat, EncodeHintType}
-import com.lightning.walletapp.ln.Tools.{wrap, none}
+import com.lightning.walletapp.ln.Tools.{none, wrap}
 import android.text.{StaticLayout, TextPaint}
 import java.io.{File, FileOutputStream}
-import android.os.{Bundle, Environment}
 
 
 object QRGen {
@@ -30,9 +31,9 @@ object QRGen {
   hints.put(EncodeHintType.ERROR_CORRECTION, ErrorCorrectionLevel.M)
   hints.put(EncodeHintType.MARGIN, 1)
 
-  def get(txt: String, size: Int): Bitmap = {
-    val bitMatrix = writer.encode(txt, BarcodeFormat.QR_CODE, size, size, hints)
-    val (wid, height) = (bitMatrix.getWidth, bitMatrix.getHeight)
+  def get(bech32Text: String, size: Int): Bitmap = {
+    val bitMatrix = writer.encode(bech32Text.toUpperCase, BarcodeFormat.QR_CODE, size, size, hints)
+    val wid \ height = Tuple2(bitMatrix.getWidth, bitMatrix.getHeight)
     val pixels = new Array[Int](wid * height)
 
     for (y <- 0 until height) for (x <- 0 until wid)
@@ -46,18 +47,10 @@ object QRGen {
   }
 }
 
-object FileOps {
-  def shell(name: String) = {
-    val path = Environment.getExternalStorageDirectory
-    val dir = new File(path.getAbsolutePath)
-    if (!dir.exists) dir.mkdirs
-    new File(dir, name)
-  }
-}
-
 class RequestActivity extends TimerActivity { me =>
-  lazy val reqOptions = findViewById(R.id.reqOptions).asInstanceOf[LinearLayout]
+  lazy val reqContainer = findViewById(R.id.reqContainer).asInstanceOf[LinearLayout]
   lazy val reqFulfilled = findViewById(R.id.reqFulfilled).asInstanceOf[LinearLayout]
+  lazy val reqOptions = findViewById(R.id.reqOptions).asInstanceOf[LinearLayout]
   lazy val shareText = findViewById(R.id.shareText).asInstanceOf[ImageButton]
   lazy val shareQR = findViewById(R.id.shareQR).asInstanceOf[ImageButton]
   lazy val reqCode = findViewById(R.id.reqCode).asInstanceOf[ImageView]
@@ -66,38 +59,39 @@ class RequestActivity extends TimerActivity { me =>
   lazy val bottomSize = getResources getDimensionPixelSize R.dimen.bitmap_bottom_size
   lazy val topSize = getResources getDimensionPixelSize R.dimen.bitmap_top_size
   lazy val qrSize = getResources getDimensionPixelSize R.dimen.bitmap_qr_size
-  lazy val disposable = getString(ln_qr_disposable)
 
   var whenDestroy: Runnable = new Runnable { def run = none }
   override def onDestroy = wrap(super.onDestroy)(whenDestroy.run)
 
   def INIT(state: Bundle) = if (app.isAlive) {
     setContentView(R.layout.activity_qr_request)
+    // Snapshot target hash, data will be erased soon
     val targetPayHash = app.TransData.value match {
-      case request: PaymentRequest => request.paymentHash
+      case pr: PaymentRequest => pr.paymentHash
       case _ => BinaryData.empty
     }
 
     val receivedListener = new ChannelListener {
-      override def settled(cs: Commitments) = for {
-        Htlc(true, add) \ _ <- cs.localCommit.spec.fulfilled
+      override def settled(commitments: Commitments) = for {
+        Htlc(true, add) \ _ <- commitments.localCommit.spec.fulfilled
         if add.paymentHash == targetPayHash
       } showPaid.run
     }
 
     app.TransData checkAndMaybeErase {
-      case pr: PaymentRequest => showInfo(drawAll(denom asString pr.amount.get, disposable.html), PaymentRequest write pr)
+      case pr: PaymentRequest => showInfo(drawAll(denom asString pr.amount.get, getString(ln_qr_disposable).html), PaymentRequest write pr)
       case onChainAddress: Address => showInfo(drawBottom(Utils humanSix onChainAddress.toString), onChainAddress.toString)
       case _ => finish
     }
 
-    whenDestroy = UITask { for (c <- app.ChannelManager.all) c.listeners -= receivedListener }
-    for (c <- app.ChannelManager.all) c.listeners += receivedListener
+    whenDestroy = UITask(ChannelManager detachListener receivedListener)
+    ChannelManager attachListener receivedListener
   } else me exitTo classOf[MainActivity]
 
   def showPaid = UITask {
-    reqOptions setVisibility View.GONE
+    TransitionManager beginDelayedTransition reqContainer
     reqFulfilled setVisibility View.VISIBLE
+    reqOptions setVisibility View.GONE
   }
 
   def showInfo(renderBitmap: Bitmap => Bitmap, data: String) = {
@@ -106,16 +100,10 @@ class RequestActivity extends TimerActivity { me =>
     shareText setOnClickListener onButtonTap(me share data)
   }
 
-  def setView(displayedImage: Bitmap) = {
-    shareQR setOnClickListener onButtonTap {
-      <(me saveImage displayedImage, onFail) { file =>
-        val share = new Intent setAction Intent.ACTION_SEND setType "image/png"
-        me startActivity share.putExtra(Intent.EXTRA_STREAM, Uri fromFile file)
-      }
-    }
-
-    // Enable after QR is fully generated
-    reqCode setImageBitmap displayedImage
+  def setView(image: Bitmap) = {
+    def share = <(me shareBitmap image, onFail)(none)
+    shareQR setOnClickListener onButtonTap(share)
+    reqCode setImageBitmap image
     shareQR setEnabled true
   }
 
@@ -166,12 +154,17 @@ class RequestActivity extends TimerActivity { me =>
     newPaint
   }
 
-  def saveImage(bits: Bitmap) = {
-    val imageFile = FileOps shell "qr.png"
-    val stream = new FileOutputStream(imageFile)
-    bits.compress(Bitmap.CompressFormat.PNG, 80, stream)
-    stream.flush
-    stream.close
-    imageFile
+  def shareBitmap(bitmap: Bitmap) = {
+    val paymentRequestFilePath = new File(getCacheDir, "images")
+    if (!paymentRequestFilePath.isFile) paymentRequestFilePath.mkdirs
+    val out = new FileOutputStream(s"$paymentRequestFilePath/qr.png")
+    bitmap.compress(Bitmap.CompressFormat.PNG, 90, out)
+    out.close
+
+    val savedFile = new File(paymentRequestFilePath, "qr.png")
+    val fileURI = FileProvider.getUriForFile(me, "com.lightning.walletapp", savedFile)
+    val share = new Intent setAction Intent.ACTION_SEND addFlags Intent.FLAG_GRANT_READ_URI_PERMISSION
+    share.putExtra(Intent.EXTRA_STREAM, fileURI).setDataAndType(fileURI, getContentResolver getType fileURI)
+    me startActivity Intent.createChooser(share, "Choose an app")
   }
 }

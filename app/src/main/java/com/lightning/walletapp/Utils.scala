@@ -9,19 +9,20 @@ import android.text.method._
 import org.bitcoinj.core.listeners._
 import com.lightning.walletapp.Utils._
 import org.bitcoinj.wallet.listeners._
+import android.content.DialogInterface._
 import com.lightning.walletapp.Denomination._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
 import org.bitcoinj.wallet.Wallet.ExceededMaxTransactionSize
 import org.bitcoinj.wallet.Wallet.CouldNotAdjustDownwards
-import android.widget.RadioGroup.OnCheckedChangeListener
 import android.widget.AdapterView.OnItemClickListener
-import info.hoang8f.android.segmented.SegmentedGroup
 import concurrent.ExecutionContext.Implicits.global
 import com.lightning.walletapp.ln.LNParams.minDepth
-import android.view.inputmethod.InputMethodManager
-import com.lightning.walletapp.lnutils.RatesSaver
+import com.lightning.walletapp.helper.FingerPrint
 import android.support.v7.app.AppCompatActivity
+import android.support.v4.content.ContextCompat
+import ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.View.OnClickListener
+import co.infinum.goldfinger.Goldfinger
 import android.app.AlertDialog.Builder
 import fr.acinq.bitcoin.MilliSatoshi
 import language.implicitConversions
@@ -29,50 +30,41 @@ import org.bitcoinj.script.Script
 import scala.concurrent.Future
 import android.os.Bundle
 
-import android.content.DialogInterface.{BUTTON_NEUTRAL, BUTTON_POSITIVE, BUTTON_NEGATIVE}
-import com.lightning.walletapp.lnutils.IconGetter.{scrWidth, maxDialog}
-import com.lightning.walletapp.ln.Tools.{none, wrap, runAnd}
+import com.lightning.walletapp.lnutils.IconGetter.{maxDialog, scrWidth}
+import com.lightning.walletapp.ln.Tools.{none, runAnd, wrap}
+import com.lightning.walletapp.lnutils.{GDrive, RatesSaver}
 import org.bitcoinj.wallet.SendRequest.{emptyWallet, to}
-import R.id.{typeCNY, typeEUR, typeJPY, typeUSD}
+import android.content.{DialogInterface, Intent}
 import org.bitcoinj.wallet.{SendRequest, Wallet}
 import scala.util.{Failure, Success, Try}
 import android.app.{AlertDialog, Dialog}
-import android.content.{Context, Intent}
 import java.util.{Timer, TimerTask}
-
-import ViewGroup.LayoutParams.WRAP_CONTENT
-import InputMethodManager.HIDE_NOT_ALWAYS
-import Context.INPUT_METHOD_SERVICE
 
 
 object Utils {
   type TryMSat = Try[MilliSatoshi]
   var appReference: WalletApp = _
   var denom: Denomination = _
-  var fiatName: String = _
+  var fiatCode: String = _
 
-  val fileName = "SegwitMainnet"
-  val dbFileName = s"$fileName.db"
-  val walletFileName = s"$fileName.wallet"
-  val chainFileName = s"$fileName.spvchain"
+  final val fileName = "SegwitMainnet"
+  final val dbFileName = s"$fileName.db"
+  final val walletFileName = s"$fileName.wallet"
+  final val chainFileName = s"$fileName.spvchain"
 
   lazy val app = appReference
-  lazy val sumIn = app getString txs_sum_in
-  lazy val sumOut = app getString txs_sum_out
   lazy val noDesc = app getString ln_no_description
-  lazy val denoms = List(SatDenomination, FinDenomination, BtcDenomination)
-  val coloredOut: MilliSatoshi => String = amt => sumOut.format(denom withSign amt)
-  val coloredIn: MilliSatoshi => String = amt => sumIn.format(denom withSign amt)
+  lazy val denoms = List(SatDenomination, BtcDenomination)
   val singleChoice = android.R.layout.select_dialog_singlechoice
 
   // Mappings
   val viewMap = Map(true -> View.VISIBLE, false -> View.GONE)
-  val Seq(strDollar, strEuro, strYen, strYuan) = Seq("dollar", "euro", "yen", "yuan")
-  val fiatMap = Map(typeUSD -> strDollar, typeEUR -> strEuro, typeJPY -> strYen, typeCNY -> strYuan)
-  val revFiatMap = Map(strDollar -> typeUSD, strEuro -> typeEUR, strYen -> typeJPY, strYuan -> typeCNY)
-  def humanNode(key: String, sep: String) = key.grouped(24).map(_ grouped 3 mkString "\u0020") mkString sep
-  def getDescription(rawText: String) = if (rawText.isEmpty) s"<i>$noDesc</i>" else rawText take 140
-  def humanSix(adr: String) = adr grouped 6 mkString "\u0020"
+  val fiatNames = Map("usd" -> "US Dollar", "eur" -> "Euro", "jpy" -> "Japanese Yen", "cny" -> "Chinese Yuan",
+    "inr" -> "Indian Rupee", "ils" -> "Israeli Shekel ", "cad" -> "Canadian Dollar", "rub" -> "Русский Рубль",
+    "brl" -> "Real Brasileiro", "czk" -> "Česká Koruna", "gbp" -> "Pound Sterling", "aud" -> "Australian Dollar")
+
+  def getDescription(raw: String) = if (raw.isEmpty) s"<i>$noDesc</i>" else raw take 140
+  def humanSix(bitcoinAddress: String) = bitcoinAddress grouped 6 mkString "\u0020"
 
   def clickableTextField(view: View): TextView = {
     val field: TextView = view.asInstanceOf[TextView]
@@ -80,17 +72,14 @@ object Utils {
     field
   }
 
-  def currentRate = Try(RatesSaver.rates exchange fiatName)
+  def currentRate = Try(RatesSaver.rates exchange fiatCode)
   def msatInFiat(milliSatoshi: MilliSatoshi) = currentRate map {
     perBtc => milliSatoshi.amount * perBtc / BtcDenomination.factor
   }
 
-  val msatInFiatHuman = (ms: MilliSatoshi) => msatInFiat(ms) match {
-    case Success(amt) if fiatName == strYuan => s"≈ ${formatFiat format amt} cny"
-    case Success(amt) if fiatName == strEuro => s"≈ ${formatFiat format amt} eur"
-    case Success(amt) if fiatName == strYen => s"≈ ${formatFiat format amt} jpy"
-    case Success(amt) => s"≈ ${formatFiat format amt} usd"
-    case _ => new String
+  val msatInFiatHuman: MilliSatoshi => String = ms => msatInFiat(ms) match {
+    case Success(providedAmount) => s"≈ ${formatFiat format providedAmount} $fiatCode"
+    case _ => s"≈ ? $fiatCode"
   }
 }
 
@@ -113,6 +102,11 @@ trait TimerActivity extends AppCompatActivity { me =>
     runAnd(app.TransData.DoNotEraseValue)(finish)
   }
 
+  def askGDriveSignIn = {
+    val signInClient = GDrive signInAttemptClient me
+    startActivityForResult(signInClient.getSignInIntent, 102)
+  }
+
   def finishMe(top: View) = finish
   def delayUI(fun: TimerTask) = timer.schedule(fun, 225)
   def rm(prev: Dialog)(exe: => Unit) = wrap(prev.dismiss)(me delayUI exe)
@@ -132,7 +126,6 @@ trait TimerActivity extends AppCompatActivity { me =>
     val alert = showForm(bld.create)
     val posAct = me onButtonTap ok(alert)
     val negAct = me onButtonTap rm(alert)(no)
-    try clickableTextField(alert findViewById android.R.id.message) catch none
     if (-1 != noResource) alert getButton BUTTON_NEGATIVE setOnClickListener negAct
     if (-1 != okResource) alert getButton BUTTON_POSITIVE setOnClickListener posAct
     alert
@@ -141,12 +134,12 @@ trait TimerActivity extends AppCompatActivity { me =>
   def mkCheckFormNeutral(ok: AlertDialog => Unit, no: => Unit, neutral: AlertDialog => Unit,
                          bld: Builder, okResource: Int, noResource: Int, neutralResource: Int) = {
 
-    val bld1 = bld.setNeutralButton(neutralResource, null)
-    val alert = mkCheckForm(ok, no, bld1, okResource, noResource)
+    if (-1 != neutralResource) bld.setNeutralButton(neutralResource, null)
+    val alert = mkCheckForm(ok, no, bld, okResource, noResource)
     val neutralAct = me onButtonTap neutral(alert)
 
-    // Extend base dialog with a special neutral button
-    alert getButton BUTTON_NEUTRAL setOnClickListener neutralAct
+    // Extend base dialog with a special NEUTRAL button, may be omitted by providing -1
+    if (-1 != neutralResource) alert getButton BUTTON_NEUTRAL setOnClickListener neutralAct
     alert
   }
 
@@ -155,15 +148,53 @@ trait TimerActivity extends AppCompatActivity { me =>
     alertDialog.getWindow.getAttributes.windowAnimations = R.style.SlidingDialog
     alertDialog setCanceledOnTouchOutside false
 
-    try alertDialog.show catch none finally if (scrWidth > 2.3) {
-      // Could be run on large tablets so constrain max window size
-      alertDialog.getWindow.setLayout(maxDialog.toInt, WRAP_CONTENT)
-    }
-
+    // First, attempt to make dialog links clickable, then make sure it does not blow up if called on destroyed activity
+    try alertDialog.show catch none finally if (scrWidth > 2.3) alertDialog.getWindow.setLayout(maxDialog.toInt, WRAP_CONTENT)
+    try clickableTextField(alertDialog findViewById android.R.id.message) catch none
     alertDialog
   }
 
+  def fpAuth(gf: Goldfinger, onFail: => Unit)(onOK: => Unit) = {
+    if (FingerPrint isOperational gf) proceedWithFingerprintAuth else onOK
+
+    def proceedWithFingerprintAuth = {
+      val content = getLayoutInflater.inflate(R.layout.frag_touch, null)
+      val alert = showForm(negBuilder(dialog_cancel, content, null).create)
+
+      alert setOnDismissListener new OnDismissListener {
+        def onDismiss(alertDialogInterface: DialogInterface) = {
+          // Will be called when either BACK or CANCEL button is tapped
+          // but won't be called if fingerprint auth was successful
+          gf.cancel
+          onFail
+        }
+      }
+
+      gf authenticate new Goldfinger.Callback {
+        def onError(error: co.infinum.goldfinger.Error) = {
+          // Here gf cancelling will happen in dismiss method
+          if (error.isCritical) alert.dismiss
+          FingerPrint informUser error
+        }
+
+        def onSuccess(cipher: String) = {
+          // Here gf is cancelled automatically
+          // prevent onDismissed from being called
+          alert setOnDismissListener null
+          rm(alert)(onOK)
+        }
+      }
+    }
+  }
+
   def INIT(savedInstanceState: Bundle): Unit
+  def updateView2Blue(oldView: View, newText: String) = {
+    val titleTip = oldView.findViewById(R.id.titleTip).asInstanceOf[TextView]
+    oldView setBackgroundColor ContextCompat.getColor(me, R.color.ln)
+    titleTip setText s"<font color=#FFFFFF>$newText</font>".html
+    oldView
+  }
+
   implicit def str2View(textFieldData: CharSequence): LinearLayout = {
     val view = getLayoutInflater.inflate(R.layout.frag_top_tip, null).asInstanceOf[LinearLayout]
     Utils clickableTextField view.findViewById(R.id.titleTip) setText textFieldData
@@ -182,44 +213,34 @@ trait TimerActivity extends AppCompatActivity { me =>
   }
 
   // Utils
-  def hideKeys(exec: => Unit): Unit = try {
-    val mgr = getSystemService(INPUT_METHOD_SERVICE).asInstanceOf[InputMethodManager]
-    mgr.hideSoftInputFromWindow(getCurrentFocus.getWindowToken, HIDE_NOT_ALWAYS)
-  } catch none finally me delayUI exec
-
-  def onTap(run: Int => Unit): OnItemClickListener = new OnItemClickListener {
-    def onItemClick(adapter: AdapterView[_], view: View, pos: Int, id: Long) = run(pos)
+  def onButtonTap(exec: => Unit) = new OnClickListener { def onClick(view: View) = exec }
+  def onTap(listItemTapRunner: Int => Unit): OnItemClickListener = new OnItemClickListener {
+    def onItemClick(a: AdapterView[_], view: View, pos: Int, id: Long) = listItemTapRunner(pos)
   }
-
-  def onButtonTap(exec: => Unit) = new OnClickListener { def onClick(view: View) = me hideKeys exec }
-  def onFastTap(fastExec: => Unit) = new OnClickListener { def onClick(view: View) = fastExec }
 
   def share(exportedTextData: String): Unit = {
     val share = new Intent setAction Intent.ACTION_SEND setType "text/plain"
     me startActivity share.putExtra(Intent.EXTRA_TEXT, exportedTextData)
   }
 
-  def viewMnemonic(view: View) = {
+  def viewMnemonic(view: View) = fpAuth(new Goldfinger.Builder(me).build, onFail = none) {
     val recoveryCode = TextUtils.join("\u0020", app.kit.wallet.getKeyChainSeed.getMnemonicCode)
-    showForm(negBuilder(dialog_ok, me getString sets_mnemonic, recoveryCode).create)
+    showForm(alertDialog = negBuilder(dialog_ok, me getString sets_mnemonic, recoveryCode).create)
   }
 
   abstract class TxProcessor { self =>
     def futureProcess(req: SendRequest)
-    def onTxFail(exc: Throwable)
     val pay: PayData
 
-    // Estimate a real fee this tx will have in order to be confirmed within next 6 blocks
-    def start = <(app.kit sign plainRequest(RatesSaver.rates.feeSix), onTxFail)(chooseFee)
-
-    def chooseFee(estimate: SendRequest): Unit = {
+    def start(coloredAmount: String) = <(app.kit sign plainRequest(RatesSaver.rates.feeSix), onTxFail) { estimate =>
+      // Estimate a real fee this tx will have in order to be confirmed within next 6 blocks, then propose chaper one
       val livePerTxFee: MilliSatoshi = estimate.tx.getFee
       val riskyPerTxFee: MilliSatoshi = livePerTxFee / 2
 
       val inFiatLive = msatInFiatHuman(livePerTxFee)
       val inFiatRisky = msatInFiatHuman(riskyPerTxFee)
-      val markedLivePerTxFee = coloredOut(livePerTxFee)
-      val markedRiskyPerTxFee = coloredOut(riskyPerTxFee)
+      val markedLivePerTxFee = denom.coloredOut(livePerTxFee, denom.sign)
+      val markedRiskyPerTxFee = denom.coloredOut(riskyPerTxFee, denom.sign)
 
       val txtFeeLive = getString(fee_live).format(markedLivePerTxFee, inFiatLive)
       val txtFeeRisky = getString(fee_risky).format(markedRiskyPerTxFee, inFiatRisky)
@@ -233,7 +254,7 @@ trait TimerActivity extends AppCompatActivity { me =>
         case 1 => self futureProcess plainRequest(RatesSaver.rates.feeSix)
       }, onTxFail)(none)
 
-      val bld = baseBuilder(getString(step_fees).format(pay destination coloredOut).html, form)
+      val bld = baseBuilder(getString(step_fees).format(coloredAmount).html, form)
       mkCheckForm(alert => rm(alert)(proceed), none, bld, dialog_pay, dialog_cancel)
       lst setAdapter new ArrayAdapter(me, singleChoice, feesOptions)
       lst.setItemChecked(0, true)
@@ -243,87 +264,69 @@ trait TimerActivity extends AppCompatActivity { me =>
       val unsignedRequestWithFee = pay.getRequest
       unsignedRequestWithFee.feePerKb = selectedFeePerKb
       app.kit.wallet addLocalInputsToTx unsignedRequestWithFee
-      TxWrap maybeAddOpReturn unsignedRequestWithFee
+      unsignedRequestWithFee
     }
 
-    def messageWhenMakingTx: PartialFunction[Throwable, CharSequence] = {
+    def txMakeError: PartialFunction[Throwable, CharSequence] = {
       case _: ExceededMaxTransactionSize => app getString err_tx_too_large
       case _: CouldNotAdjustDownwards => app getString err_empty_shrunk
+
       case notEnough: InsufficientMoneyException =>
-
-        val canSend = sumIn.format(denom withSign app.kit.conf1Balance)
-        val sending = sumOut.format(denom withSign pay.cn)
-
-        val txt = getString(err_not_enough_funds)
-        val zeroConfs = app.kit.conf0Balance minus app.kit.conf1Balance
-        val missing = sumOut.format(denom withSign notEnough.missing)
-        val pending = sumIn format denom.withSign(zeroConfs)
-        txt.format(canSend, sending, missing, pending).html
+        val sending = denom.coloredOut(pay.cn, denom.sign)
+        val missing = denom.coloredOut(notEnough.missing, denom.sign)
+        val canSend = denom.coloredIn(app.kit.conf0Balance, denom.sign)
+        getString(err_not_enough_funds).format(canSend, sending, missing).html
 
       case _: Throwable =>
-        app getString err_general
+        app getString err_no_data
     }
+
+    def onTxFail(err: Throwable): Unit =
+      mkCheckForm(alert => rm(alert)(finish), no = none,
+        baseBuilder(txMakeError(err), null), dialog_ok, -1)
   }
 }
 
-class RateManager(extra: String, val content: View) { me =>
+class RateManager(val content: View) { me =>
   val satInput = content.findViewById(R.id.inputAmount).asInstanceOf[EditText]
-  val hintDenom = Utils clickableTextField content.findViewById(R.id.hintDenom)
-  val fiatType = content.findViewById(R.id.fiatType).asInstanceOf[SegmentedGroup]
   val fiatInput = content.findViewById(R.id.fiatInputAmount).asInstanceOf[EditText]
-  def result: TryMSat = Try(denom rawString2MSat satInput.getText.toString.noSpaces)
+  val hintFiatDenom = Utils clickableTextField content.findViewById(R.id.hintFiatDenom)
+  val hintDenom = Utils clickableTextField content.findViewById(R.id.hintDenom)
+
+  def result = Try(denom rawString2MSat satInput.getText.toString.noSpaces)
   def setSum(res: TryMSat) = satInput.setText(res map denom.asString getOrElse null)
-  def fiatDecimal = BigDecimal(fiatInput.getText.toString.noSpaces)
+  def hint(ex: String) = runAnd(me)(hintDenom setText denom.amountInTxt.format(ex).html)
 
   val fiatListener = new TextChangedWatcher {
-    def upd = setSum(currentRate.map(perBtc => fiatDecimal / perBtc) map btcBigDecimal2MSat)
-    def onTextChanged(s: CharSequence, start: Int, b: Int, c: Int) = if (fiatInput.hasFocus) upd
+    def upd = currentRate.map(perBtc => BigDecimal(fiatInput.getText.toString.noSpaces) / perBtc) map btcBigDecimal2MSat
+    def onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) = if (fiatInput.hasFocus) setSum(upd)
   }
 
   val bitListener = new TextChangedWatcher {
     def upd = fiatInput.setText(result flatMap msatInFiat map formatFiat.format getOrElse null)
-    def onTextChanged(s: CharSequence, start: Int, b: Int, c: Int) = if (satInput.hasFocus) upd
-  }
-
-  fiatType setOnCheckedChangeListener new OnCheckedChangeListener {
-    def onCheckedChanged(radioGroupView: RadioGroup, newFiatName: Int) = {
-      // We update both runtime variable and saved value for future launches
-
-      fiatName = fiatMap apply newFiatName
-      app.prefs.edit.putString(AbstractKit.FIAT_TYPE, fiatName).commit
-      if (fiatInput.hasFocus) fiatListener.upd else bitListener.upd
-      fiatInput setHint fiatName
-    }
+    def onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) = if (satInput.hasFocus) upd
   }
 
   satInput addTextChangedListener bitListener
   fiatInput addTextChangedListener fiatListener
-  hintDenom setText denom.txt.format(extra).html
-  fiatType check revFiatMap(fiatName)
+  hintFiatDenom setText fiatNames(fiatCode)
   satInput.requestFocus
 }
 
 trait PayData {
-  // Emptying a wallet needs special handling
-  def destination(mark: MilliSatoshi => String): String
-  def isAll = app.kit.conf1Balance equals cn
+  def destination(colored: String): String
   def getRequest: SendRequest
   def cn: Coin
-
-  def transform(mark: MilliSatoshi => String) = {
-    val formattedAmount = mark apply coin2MSat(cn)
-    s"<small>$formattedAmount</small><br>"
-  }
 }
 
 case class AddrData(cn: Coin, address: Address) extends PayData {
-  def getRequest: SendRequest = if (isAll) emptyWallet(address) else to(address, cn)
-  def destination(mark: MilliSatoshi => String) = transform(mark) + humanSix(address.toString)
+  def getRequest: SendRequest = if (app.kit.conf0Balance equals cn) emptyWallet(address) else to(address, cn)
+  def destination(colored: String) = s"<small>$colored</small><br>" + humanSix(address.toString)
 }
 
 case class P2WSHData(cn: Coin, pay2wsh: Script) extends PayData {
-  def getRequest = if (isAll) emptyWallet(app.params, pay2wsh) else to(app.params, pay2wsh, cn)
-  def destination(mark: MilliSatoshi => String) = transform(mark) + app.getString(txs_p2wsh)
+  def getRequest = if (app.kit.conf0Balance equals cn) emptyWallet(app.params, pay2wsh) else to(app.params, pay2wsh, cn)
+  def destination(colored: String) = s"<small>$colored</small><br>" + app.getString(txs_p2wsh)
 }
 
 abstract class TextChangedWatcher extends TextWatcher {
@@ -337,20 +340,7 @@ trait BlocksListener extends PeerDataEventListener {
   def onPreMessageReceived(peer: Peer, message: Message) = message
 }
 
-trait TxTracker
-extends WalletCoinsSentEventListener
-with WalletCoinsReceivedEventListener
-with TransactionConfidenceEventListener {
-
+trait TxTracker extends WalletCoinsSentEventListener with WalletCoinsReceivedEventListener with TransactionConfidenceEventListener {
+  def onTransactionConfidenceChanged(w: Wallet, txj: Transaction) = if (txj.getConfidence.getDepthInBlocks == minDepth) txConfirmed(txj)
   def txConfirmed(txj: Transaction): Unit = none
-  def onTransactionConfidenceChanged(w: Wallet, txj: Transaction) =
-    if (txj.getConfidence.getDepthInBlocks == minDepth) txConfirmed(txj)
-}
-
-class MinDepthReachedCoinSelector
-extends org.bitcoinj.wallet.DefaultCoinSelector {
-
-  override def shouldSelect(txj: Transaction): Boolean =
-    if (null != txj) txj.getConfidence.getDepthInBlocks >= minDepth
-    else true
 }

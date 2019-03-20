@@ -3,7 +3,6 @@ package com.lightning.walletapp
 import R.string._
 import android.widget._
 import com.lightning.walletapp.Utils._
-
 import java.io.{File, FileInputStream}
 import org.bitcoinj.core.{BlockChain, PeerGroup}
 import com.google.common.io.{ByteStreams, Files}
@@ -20,26 +19,25 @@ import android.os.Bundle
 import android.view.View
 
 
-trait ViewSwitch {
-  val views: List[View]
-  def setVis(ms: Int*) = views zip ms foreach {
-    case (view, state) => view setVisibility state
-  }
-}
-
 object MainActivity {
-  var proceed: Runnable = _
+  var proceedOnSuccess: Runnable = _
+  var actOnError: PartialFunction[Throwable, Unit] = _
+  val wallet = classOf[WalletActivity]
 
   lazy val prepareKit = {
     val stream = new FileInputStream(app.walletFile)
     val proto = WalletProtobufSerializer parseToProto stream
 
     app.kit = new app.WalletKit {
-      def startUp = runAnd(setupAndStartDownload)(proceed.run)
       wallet = (new WalletProtobufSerializer).readWallet(app.params, null, proto)
       store = new org.bitcoinj.store.SPVBlockStore(app.params, app.chainFile)
       blockChain = new BlockChain(app.params, wallet, store)
       peerGroup = new PeerGroup(app.params, blockChain)
+
+      def startUp = try {
+        setupAndStartDownload
+        proceedOnSuccess.run
+      } catch actOnError
     }
   }
 }
@@ -50,23 +48,21 @@ class MainActivity extends NfcReaderActivity with TimerActivity { me =>
 
   def INIT(state: Bundle) = {
     runAnd(me setContentView R.layout.activity_main)(me initNfc state)
+    MainActivity.proceedOnSuccess = UITask { me exitTo MainActivity.wallet }
+    MainActivity.actOnError = { case error => UITask(throw error).run }
     Utils clickableTextField findViewById(R.id.mainGreetings)
-
-    MainActivity.proceed = UITask {
-      // Unconditionally go to wallet
-      me exitTo classOf[WalletActivity]
-    }
+    lnutils.TopNodes.subscription
   }
 
   // NFC AND SHARE
 
   private[this] def readFail(readingError: Throwable) = runAnd(app toast err_no_data)(next)
-  def readNdefMessage(m: Message) = <(app.TransData recordValue ndefMessageString(m), readFail)(ok => next)
+  def readNdefMessage(msg: Message) = <(app.TransData recordValue ndefMessageString(msg), readFail)(_ => next)
 
   override def onNoNfcIntentFound = {
     val processIntent = (getIntent.getFlags & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0
-    val dataOpt = Seq(getIntent.getDataString, getIntent getStringExtra Intent.EXTRA_TEXT) find null.!=
-    if (processIntent) <(dataOpt foreach app.TransData.recordValue, readFail)(ok => next) else next
+    val dataOpt = Seq(getIntent.getDataString, getIntent getStringExtra Intent.EXTRA_TEXT).find(null.!=)
+    if (processIntent) <(dataOpt foreach app.TransData.recordValue, readFail)(_ => next) else next
   }
 
   def onNfcStateEnabled = none
@@ -79,15 +75,15 @@ class MainActivity extends NfcReaderActivity with TimerActivity { me =>
   // STARTUP LOGIC
 
   def next: Unit = (app.walletFile.exists, app.isAlive) match {
-    // Find out what exactly should be done once user opens an app
-    // depends on both wallet app file existence and runtime objects presence
-    case (false, _) => findViewById(R.id.mainChoice) setVisibility View.VISIBLE
-    case (true, true) => MainActivity.proceed.run
+    // What exactly should be done depends on wallet app file existence and runtime objects presence
+    case (false, _) => findViewById(R.id.mainChoice).asInstanceOf[View] setVisibility View.VISIBLE
+    case (true, true) => MainActivity.proceedOnSuccess.run
 
     case (true, false) =>
       MainActivity.prepareKit
-      val seed = app.kit.wallet.getKeyChainSeed.getSeedBytes
-      runAnd(LNParams setup seed)(app.kit.startAsync)
+      // First load wallet files, then init db, then init the rest
+      LNParams setup app.kit.wallet.getKeyChainSeed.getSeedBytes
+      app.kit.startAsync
 
     // Just should not ever happen
     // and when it does we just exit
@@ -97,11 +93,10 @@ class MainActivity extends NfcReaderActivity with TimerActivity { me =>
   // MISC
 
   def goRestoreWallet(view: View) = {
-
     val restoreOptions = getResources getStringArray R.array.restore_options
     val lst = getLayoutInflater.inflate(R.layout.frag_center_list, null).asInstanceOf[ListView]
     lst setAdapter new ArrayAdapter(me, R.layout.frag_top_tip, R.id.titleTip, restoreOptions)
-    val alert = showForm(negBuilder(dialog_cancel, null, lst).create)
+    val alert = showForm(negBuilder(dialog_cancel, me getString wallet_restore, lst).create)
     lst setDividerHeight 0
     lst setDivider null
 

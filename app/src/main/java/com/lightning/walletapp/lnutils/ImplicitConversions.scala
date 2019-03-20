@@ -1,8 +1,10 @@
 package com.lightning.walletapp.lnutils
 
+import android.graphics.drawable.BitmapDrawable
 import com.lightning.walletapp.Utils.app
 import language.implicitConversions
 import fr.acinq.bitcoin.BinaryData
+import android.view.Gravity
 import android.text.Html
 
 
@@ -24,23 +26,32 @@ object IconGetter extends Html.ImageGetter {
   val maxDialog = metrics.densityDpi * 2.1
   val isTablet = scrWidth > 3.5
 
-  import android.provider.Settings.{System => FontSystem}
-  val bigFont = FontSystem.getFloat(app.getContentResolver, FontSystem.FONT_SCALE, 1) > 1
-  private val noneDrawable = app.getResources.getDrawable(com.lightning.walletapp.R.drawable.icon_none, null)
-  private val btcDrawable = app.getResources.getDrawable(com.lightning.walletapp.R.drawable.icon_btc_shape, null)
-  private val lnDrawable = app.getResources.getDrawable(com.lightning.walletapp.R.drawable.icon_bolt_shape, null)
-  def getDrawable(s: String) = s match { case "ln" => lnDrawable case "btc" => btcDrawable case "none" => noneDrawable }
+  val btcDrawableTitle = app.getResources.getDrawable(com.lightning.walletapp.R.drawable.icon_btc_shape, null).asInstanceOf[BitmapDrawable]
+  val lnDrawableTitle = app.getResources.getDrawable(com.lightning.walletapp.R.drawable.icon_bolt_shape, null).asInstanceOf[BitmapDrawable]
+  val btcDrawable = app.getResources.getDrawable(com.lightning.walletapp.R.drawable.icon_btc_shape, null).asInstanceOf[BitmapDrawable]
+  val lnDrawable = app.getResources.getDrawable(com.lightning.walletapp.R.drawable.icon_bolt_shape, null).asInstanceOf[BitmapDrawable]
 
-  private val fontAdjusted = if (bigFont) 7.5 else 8.3
-  private val screenMetricsAdjusted = (metrics.densityDpi / fontAdjusted).toInt
-  noneDrawable.setBounds(0, -2, screenMetricsAdjusted, screenMetricsAdjusted)
-  btcDrawable.setBounds(0, -2, screenMetricsAdjusted, screenMetricsAdjusted)
-  lnDrawable.setBounds(0, -2, screenMetricsAdjusted, screenMetricsAdjusted)
+  def getDrawable(s: String) = s match {
+    case "btcbig" => btcDrawableTitle
+    case "lnbig" => lnDrawableTitle
+    case "btc" => btcDrawable
+    case "ln" => lnDrawable
+  }
+
+  val bigFont = android.provider.Settings.System.getFloat(app.getContentResolver, android.provider.Settings.System.FONT_SCALE, 1) > 1
+  btcDrawableTitle.setBounds(0, 0, btcDrawable.getIntrinsicWidth, { if (bigFont) 16 else 11 } + btcDrawableTitle.getIntrinsicHeight)
+  lnDrawableTitle.setBounds(0, 0, lnDrawable.getIntrinsicWidth, { if (bigFont) 22 else 16 } + lnDrawableTitle.getIntrinsicHeight)
+  btcDrawable.setBounds(0, 0, btcDrawable.getIntrinsicWidth, { if (bigFont) 10 else 6 } + btcDrawable.getIntrinsicHeight)
+  lnDrawable.setBounds(0, 0, lnDrawable.getIntrinsicWidth, { if (bigFont) 11 else 5 } + lnDrawable.getIntrinsicHeight)
+
+  btcDrawableTitle.setGravity(Gravity.TOP)
+  lnDrawableTitle.setGravity(Gravity.TOP)
+  btcDrawable.setGravity(Gravity.TOP)
+  lnDrawable.setGravity(Gravity.TOP)
 }
 
 class StringOps(source: String) {
   def html = Html.fromHtml(source, IconGetter, null)
-  def hex2asci = new String(BinaryData(source), "UTF-8")
   def hex = BinaryData(source getBytes "UTF-8").toString
-  def noSpaces = source.replace(" ", "")
+  def noSpaces = source.replace(" ", "").replace("\u00A0", "")
 }

@@ -3,7 +3,7 @@ package com.lightning.walletapp.test
 import java.net.{Inet4Address, Inet6Address, InetAddress, InetSocketAddress}
 
 import com.google.common.net.InetAddresses
-import com.lightning.walletapp.ln.PerHopPayload
+import com.lightning.walletapp.ln.{Announcements, PerHopPayload}
 import com.lightning.walletapp.ln.crypto.Sphinx
 import com.lightning.walletapp.ln.wire._
 import com.lightning.walletapp.ln.wire.LightningMessageCodecs._
@@ -49,7 +49,7 @@ class WireSpec {
 
       {
         // IPv4 mapped
-        val bin = hex"00000000000000000000ffffae8a0b08".toBitVector
+        val bin = BitVector.fromValidHex("00000000000000000000ffffae8a0b08")
         val ipv6 = Inet6Address.getByAddress(null, bin.toByteArray, null)
         val bin2 = ipv6address.encode(ipv6).require
         assert(bin == bin2)
@@ -69,7 +69,7 @@ class WireSpec {
 
       val color = (47.toByte, 255.toByte, 142.toByte)
       val bin = rgb.encode(color).toOption.get
-      assert(bin == hex"2f ff 8e".toBitVector)
+      assert(bin == BitVector.fromValidHex("2f ff 8e"))
       val color2 = rgb.decode(bin).toOption.get.value
       assert(color == color2)
     }
@@ -79,7 +79,7 @@ class WireSpec {
 
       {
         // IPv4 mapped
-        val bin = hex"00000000000000000000ffffae8a0b08".toBitVector
+        val bin = BitVector.fromValidHex("00000000000000000000ffffae8a0b08")
         val ipv6 = Inet6Address.getByAddress(null, bin.toByteArray, null)
         val bin2 = ipv6address.encode(ipv6).require
         assert(bin == bin2)
@@ -101,15 +101,15 @@ class WireSpec {
         val ipv4addr = InetAddress.getByAddress(Array[Byte](192.toByte, 168.toByte, 1.toByte, 42.toByte)).asInstanceOf[Inet4Address]
         val nodeaddr = IPv4(ipv4addr, 4231)
         val bin = nodeaddress.encode(nodeaddr).require
-        assert(bin == hex"01 C0 A8 01 2A 10 87".toBitVector)
+        assert(bin == BitVector.fromValidHex("01 C0 A8 01 2A 10 87"))
         val nodeaddr2 = nodeaddress.decode(bin).require.value
         assert(nodeaddr == nodeaddr2)
       }
       {
-        val ipv6addr = InetAddress.getByAddress(hex"2001 0db8 0000 85a3 0000 0000 ac1f 8001".toArray).asInstanceOf[Inet6Address]
+        val ipv6addr = InetAddress.getByAddress(ByteVector.fromValidHex("2001 0db8 0000 85a3 0000 0000 ac1f 8001").toArray).asInstanceOf[Inet6Address]
         val nodeaddr = IPv6(ipv6addr, 4231)
         val bin = nodeaddress.encode(nodeaddr).require
-        assert(bin == hex"02 2001 0db8 0000 85a3 0000 0000 ac1f 8001 1087".toBitVector)
+        assert(bin == BitVector.fromValidHex("02 2001 0db8 0000 85a3 0000 0000 ac1f 8001 1087"))
         val nodeaddr2 = nodeaddress.decode(bin).require.value
         assert(nodeaddr == nodeaddr2)
       }
@@ -183,8 +183,7 @@ class WireSpec {
 
     {
       println("encode/decode all channel messages")
-
-      val open = OpenChannel(randomBytes(32), randomBytes(32), 3, 4, 5, UInt64(6), 7, 8, 9, 10, 11, publicKey(1), point(2), point(3), point(4), point(5), point(6), 0.toByte)
+      val open = OpenChannel(randomBytes(32), randomBytes(32), 3, 4, 5, UInt64(6), 7, 8, 9, 10, 11, publicKey(1), point(2), point(3), point(4), point(5), point(6), ChannelFlags(0.toByte))
       val accept = AcceptChannel(randomBytes(32), 3, UInt64(4), 5, 6, 7, 8, 9, publicKey(1), point(2), point(3), point(4), point(5), point(6))
       val funding_created = FundingCreated(randomBytes(32), bin(32, 0), 3, randomSignature)
       val funding_signed = FundingSigned(randomBytes(32), randomSignature)
@@ -199,22 +198,22 @@ class WireSpec {
       val commit_sig = CommitSig(randomBytes(32), randomSignature, randomSignature :: randomSignature :: randomSignature :: Nil)
       val revoke_and_ack = RevokeAndAck(randomBytes(32), scalar(0), point(1))
       val channel_announcement = ChannelAnnouncement(randomSignature, randomSignature, randomSignature, randomSignature, bin(7, 9), Block.RegtestGenesisBlock.hash, 1, randomKey.publicKey, randomKey.publicKey, randomKey.publicKey, randomKey.publicKey)
-      val node_announcement = NodeAnnouncement(randomSignature, bin(0, 0),  1, randomKey.publicKey, (100.toByte, 200.toByte, 300.toByte), "node-alias", IPv4(InetAddress.getByAddress(Array[Byte](192.toByte, 168.toByte, 1.toByte, 42.toByte)).asInstanceOf[Inet4Address], 42000) :: Nil)
-      val channel_update = ChannelUpdate(randomSignature, Block.RegtestGenesisBlock.hash, 1, 2, bin(2, 2), 3, 4, 5, 6)
+      val node_announcement = NodeAnnouncement(randomSignature, bin(0, 0), 1, randomKey.publicKey, (100.toByte, 200.toByte, 300.toByte), "node-alias", IPv4(InetAddress.getByAddress(Array[Byte](192.toByte, 168.toByte, 1.toByte, 42.toByte)).asInstanceOf[Inet4Address], 42000) :: Nil)
+      val channel_update = ChannelUpdate(randomSignature, Block.RegtestGenesisBlock.hash, 1, 2, 42, 0, 3, 4, 5, 6, None)
       val announcement_signatures = AnnouncementSignatures(randomBytes(32), 42, randomSignature, randomSignature)
       val ping = Ping(100, BinaryData("01" * 10))
       val pong = Pong(BinaryData("01" * 10))
+      val channel_reestablish = ChannelReestablish(randomBytes(32), 242842L, 42L, None, None)
 
       val msgs: List[LightningMessage] =
         open :: accept :: funding_created :: funding_signed :: funding_locked :: update_fee :: shutdown :: closing_signed ::
           update_add_htlc :: update_fulfill_htlc :: update_fail_htlc :: update_fail_malformed_htlc :: commit_sig :: revoke_and_ack ::
-          channel_announcement :: node_announcement :: channel_update :: announcement_signatures :: ping :: pong :: Nil
+          channel_announcement :: node_announcement :: channel_update :: announcement_signatures :: ping :: pong :: channel_reestablish :: Nil
 
-      msgs.foreach { msg => {
-          val encoded = lightningMessageCodec.encode(msg)
-          val decoded = encoded.flatMap(lightningMessageCodec.decode)
-        assert(msg == decoded.toOption.get.value)
-        }
+      msgs foreach { msg =>
+        val encoded = lightningMessageCodec.encode(msg).require
+        val decoded = lightningMessageCodec.decode(encoded).require
+        assert(msg == decoded.value)
       }
     }
 
@@ -234,6 +233,17 @@ class WireSpec {
       } catch {
         case e: Throwable => assert(true)
       }
+    }
+
+    {
+      println("decode channel_update with htlc_maximum_msat")
+      val bin = BinaryData("010258fff7d0e987e2cdd560e3bb5a046b4efe7b26c969c2f51da1dceec7bcb8ae1b634790503d5290c1a6c51d681cf8f4211d27ed33a257dcc1102862571bf1792306226e46111a0b59caaf126043eb5bbf28c34f3a5e332a1fc7b2b73cf188910f0005a100000200005bc75919010100060000000000000001000000010000000a000000003a699d00")
+      val update = LightningMessageCodecs.lightningMessageCodec.decode(BitVector(bin.toArray)).require.value.asInstanceOf[ChannelUpdate]
+      assert(update == ChannelUpdate("3044022058fff7d0e987e2cdd560e3bb5a046b4efe7b26c969c2f51da1dceec7bcb8ae1b0220634790503d5290c1a6c51d681cf8f4211d27ed33a257dcc1102862571bf1792301", "06226e46111a0b59caaf126043eb5bbf28c34f3a5e332a1fc7b2b73cf188910f", 0x5a10000020000L, 1539791129, 1, 1, 6, 1, 1, 10, Some(980000000L)))
+      val nodeId = PublicKey("03370c9bac836e557eb4f017fe8f9cc047f44db39c1c4e410ff0f7be142b817ae4")
+      assert(Announcements.checkSig(update, nodeId))
+      val bin2 = BinaryData(LightningMessageCodecs.lightningMessageCodec.encode(update).require.toByteArray)
+      assert(bin == bin2)
     }
   }
 }

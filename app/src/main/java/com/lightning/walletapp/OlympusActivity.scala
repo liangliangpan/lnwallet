@@ -7,43 +7,46 @@ import scala.collection.JavaConverters._
 import com.lightning.walletapp.R.string._
 import com.lightning.walletapp.ln.Tools._
 import com.lightning.walletapp.lnutils.olympus._
-import com.lightning.walletapp.lnutils.olympus.OlympusWrap._
 import com.lightning.walletapp.lnutils.ImplicitConversions._
+import android.widget.{ArrayAdapter, CheckBox, EditText, TextView}
+import android.view.{Menu, MenuItem, ViewGroup}
+
 import android.support.v7.widget.helper.ItemTouchHelper
+import com.lightning.walletapp.lnutils.OlympusLogTable
+import com.lightning.walletapp.helper.RichCursor
 import com.lightning.walletapp.ln.LNParams
 import com.lightning.walletapp.Utils.app
 import org.bitcoinj.core.Utils.HEX
 import android.app.AlertDialog
+import android.content.Intent
 import android.os.Bundle
 import android.net.Uri
-
-import android.widget.{CheckBox, EditText, TextView}
-import android.view.{Menu, MenuItem, ViewGroup}
+import java.util.Date
 
 
-class OlympusActivity extends TimerActivity { me =>
-  lazy val toolbar = findViewById(R.id.toolbar).asInstanceOf[Toolbar]
+class OlympusActivity extends TimerActivity with HumanTimeDisplay { me =>
   lazy val serverList = findViewById(R.id.serverList).asInstanceOf[RecyclerView]
   lazy val tokensLeft = getResources getStringArray R.array.olympus_tokens_left
+  lazy val host = me
 
   val adapter = new GestureAdapter[Cloud, GestureViewHolder] {
     override def onCreateViewHolder(parent: ViewGroup, viewType: Int) = {
-      val view = getLayoutInflater.inflate(R.layout.frag_olympus_line, parent, false)
+      val view = getLayoutInflater.inflate(R.layout.frag_line_double, parent, false)
       new GestureViewHolder(view)
     }
 
     override def onBindViewHolder(holder: GestureViewHolder, pos: Int) = {
-      val olympusAddress = holder.itemView.findViewById(R.id.olympusAddress).asInstanceOf[TextView]
-      val olympusTokens = holder.itemView.findViewById(R.id.olympusTokens).asInstanceOf[TextView]
+      val olympusAddress = holder.itemView.findViewById(R.id.leftSideLine).asInstanceOf[TextView]
+      val olympusTokens = holder.itemView.findViewById(R.id.rightSideLine).asInstanceOf[TextView]
 
       val cloud = getItem(pos)
       val serverAddress = Uri.parse(cloud.connector.url)
-      val tokensLeftHuman = app.plurOrZero(tokensLeft, cloud.data.tokens.size)
+      val tokensLeftHuman = app.plur1OrZero(tokensLeft, cloud.data.tokens.size)
       val finalTokensLeft = if (cloud.isAuthEnabled) tokensLeftHuman else tokensLeft.last
 
       olympusAddress setText serverAddress.getHost
       olympusTokens setText finalTokensLeft.html
-      holder.swipable = cloud.removable == 1
+      holder.swipable = 1 == cloud.removable
     }
   }
 
@@ -54,12 +57,13 @@ class OlympusActivity extends TimerActivity { me =>
     }
   }
 
-  def INIT(savedInstanceState: Bundle) = {
-    wrap(me setSupportActionBar toolbar)(me setContentView R.layout.activity_olympus)
-    wrap(getSupportActionBar setTitle sets_manage_olympus)(getSupportActionBar setSubtitle olympus_actions)
-    Utils clickableTextField findViewById(R.id.serverWhat)
+  def INIT(s: Bundle) = {
+    me setContentView R.layout.activity_olympus
+    me initToolbar findViewById(R.id.toolbar).asInstanceOf[Toolbar]
+    getSupportActionBar setTitle sets_manage_olympus
+    getSupportActionBar setSubtitle olympus_actions
 
-    adapter setData clouds.asJava
+    adapter setData app.olympus.clouds.asJava
     adapter setDataChangeListener new GestureAdapter.OnDataChangeListener[Cloud] {
       override def onItemReorder(item: Cloud, fromPos: Int, targetPos: Int) = onUpdate
       override def onItemRemoved(item: Cloud, position: Int) = onUpdate
@@ -77,12 +81,12 @@ class OlympusActivity extends TimerActivity { me =>
   }
 
   def onUpdate = LNParams.db txWrap {
-    val updated = adapter.getData.asScala.toVector
-    for (removed <- clouds diff updated) remove(removed.identifier)
-    for (cloud \ order <- updated.zipWithIndex) addServer(cloud, order)
-    for (cloud \ order <- updated.zipWithIndex) updMeta(cloud, order)
+    val updated: Vector[Cloud] = adapter.getData.asScala.toVector
+    for (removed <- app.olympus.clouds diff updated) app.olympus.remove(removed.identifier)
+    for (cloud \ order <- updated.zipWithIndex) app.olympus.addServer(cloud, order)
+    for (cloud \ order <- updated.zipWithIndex) app.olympus.updMeta(cloud, order)
     adapter.notifyDataSetChanged
-    clouds = updated
+    app.olympus.clouds = updated
   }
 
   def addNewCloud(url: String, auth: Int) = {
@@ -101,12 +105,15 @@ class OlympusActivity extends TimerActivity { me =>
   }
 
   override def onOptionsItemSelected(m: MenuItem) = {
-    if (m.getItemId == R.id.actionAddEntity) new FormManager(addNewCloud, olympus_add)
+    val url = "http://lightning-wallet.com/what-does-olympus-server-do#what-does-olympus-server-do"
+    if (m.getItemId == R.id.actionQuestionMark) me startActivity new Intent(Intent.ACTION_VIEW, Uri parse url)
+    else if (m.getItemId == R.id.actionAddEntity) new FormManager(addNewCloud, olympus_add)
+    else if (m.getItemId == R.id.actionTokenLog) viewTokenUsageLog
     true
   }
 
   override def onCreateOptionsMenu(menu: Menu) = {
-    getMenuInflater.inflate(R.menu.add_entity, menu)
+    getMenuInflater.inflate(R.menu.olympus, menu)
     true
   }
 
@@ -124,5 +131,16 @@ class OlympusActivity extends TimerActivity { me =>
       next(uriChecker.toString, if (serverBackup.isChecked) 1 else 0)
       alert.dismiss
     }
+  }
+
+  def viewTokenUsageLog = {
+    val events = RichCursor(LNParams.db select OlympusLogTable.selectAllSql) vec { rc =>
+      val stamp = when(thenDate = new Date(rc long OlympusLogTable.stamp), now = System.currentTimeMillis)
+      s"<font color=#999999><strong>$stamp</strong></font> ${rc string OlympusLogTable.explanation}".html
+    }
+
+    val adapter = new ArrayAdapter(me, android.R.layout.simple_list_item_1, events.toArray)
+    val bld = new AlertDialog.Builder(me).setCustomTitle(me getString olympus_log)
+    bld.setAdapter(adapter, null).create.show
   }
 }

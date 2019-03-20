@@ -6,57 +6,78 @@ import com.lightning.walletapp.ln.Scripts._
 import fr.acinq.bitcoin.DeterministicWallet._
 import com.lightning.walletapp.Utils.{app, dbFileName}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey, sha256}
-import com.lightning.walletapp.lnutils.olympus.OlympusWrap.StringVec
+import com.lightning.walletapp.ln.RoutingInfoTag.PaymentRoute
+import com.lightning.walletapp.lnutils.olympus.OlympusWrap
 import com.lightning.walletapp.ln.LNParams.DepthAndDead
+import com.lightning.walletapp.ln.wire.NodeAnnouncement
+import com.lightning.walletapp.ChannelManager
 import fr.acinq.eclair.UInt64
 
 
 object LNParams { me =>
   type DepthAndDead = (Int, Boolean)
   val chainHash = Block.LivenetGenesisBlock.hash
-  val theirReserveToFundingRatio = 50
+  val channelReserveToFundingRatio = 100
   val localFeatures = "02"
   val globalFeatures = ""
   val minDepth = 1
 
+  val maxToSelfDelay = 2016
   val maxCltvDelta = 7 * 144L
   val minCapacitySat = 300000L
-  final val dust = Satoshi(5460L)
+  final val dust = Satoshi(2730L)
+  final val minFeeratePerKw = 253
   final val maxHtlcValueMsat = 4000000000L
   final val maxCapacity = Satoshi(16777215L)
   final val minHtlcValue = MilliSatoshi(1000L)
 
   var db: LNOpenHelper = _
-  var extendedNodeKey: ExtendedPrivateKey = _
-  var extendedCloudKey: ExtendedPrivateKey = _
-
-  lazy val bag = PaymentInfoWrap
-  lazy val broadcaster: Broadcaster = LocalBroadcaster
-  lazy val nodePublicKey: PublicKey = nodePrivateKey.publicKey
-  lazy val nodePrivateKey: PrivateKey = extendedNodeKey.privateKey
+  private[this] var master: ExtendedPrivateKey = _
+  lazy val extendedNodeKey = derivePrivateKey(master, hardened(46L) :: hardened(0L) :: Nil)
+  lazy val extendedCloudKey = derivePrivateKey(master, hardened(92L) :: hardened(0L) :: Nil)
+  // HashingKey is used for creating domain-specific identifiers when using "linkable payment" LNUrl
+  lazy val hashingKey = derivePrivateKey(master, hardened(138L) :: 0L :: Nil).privateKey.toBin.data
+  // Cloud secret is used to encrypt Olympus and GDrive data, cloud ID is used as identifier
   lazy val cloudSecret = sha256(extendedCloudKey.privateKey.toBin.data)
   lazy val cloudId = sha256(cloudSecret.data)
 
-  def setup(seed: BinaryData) = generate(seed) match { case m =>
-    extendedNodeKey = derivePrivateKey(m, hardened(46) :: hardened(0) :: Nil)
-    extendedCloudKey = derivePrivateKey(m, hardened(92) :: hardened(0) :: Nil)
+  lazy val bag = PaymentInfoWrap
+  lazy val broadcaster: Broadcaster = ChannelManager
+  lazy val nodePrivateKey: PrivateKey = extendedNodeKey.privateKey
+  lazy val nodePublicKey: PublicKey = nodePrivateKey.publicKey
+
+  def setup(walletSeed: BinaryData) = {
+    master = generate(seed = walletSeed)
     db = new LNOpenHelper(app, dbFileName)
+    app.olympus = new OlympusWrap
   }
 
-  def isFeeNotOk(msat: Long, fee: Long, hops: Int) =
-    fee > 10000 * (hops + 1) + msat / 50
+  def hopFee(msat: Long, base: Long, proportional: Long) = base + (proportional * msat) / 1000000L
+  def maxAcceptableFee(msat: Long, hops: Int, percent: Long = 100L) = 25000 * (hops + 1) + msat / percent
 
-  // On-chain fee calculations
+  def isFeeBreach(route: PaymentRoute, msat: Long, percent: Long = 100L) =
+    getCompundFee(route, msat) > maxAcceptableFee(msat, route.size, percent)
+
+  def getCompundFee(route: PaymentRoute, msat: Long) = route.reverse.foldLeft(msat) {
+    case sum \ hop => sum + hopFee(sum, hop.feeBaseMsat, hop.feeProportionalMillionths)
+  } - msat
+
   def shouldUpdateFee(network: Long, commit: Long) = {
     val mismatch = 2.0 * (network - commit) / (commit + network)
     mismatch < -0.25 || mismatch > 0.25
   }
 
-  def makeLocalParams(theirReserve: Long, finalScriptPubKey: BinaryData, idx: Long) = {
-    val Seq(fund, revoke, pay, delay, htlc, sha) = for (n <- 0L to 5L) yield derivePrivateKey(extendedNodeKey, idx :: n :: Nil)
-    LocalParams(maxHtlcValueInFlightMsat = UInt64(maxHtlcValueMsat), theirReserve, toSelfDelay = 2000, maxAcceptedHtlcs = 25,
-      fund.privateKey, revoke.privateKey, pay.privateKey, delay.privateKey, htlc.privateKey, finalScriptPubKey,
-      dustLimit = dust, shaSeed = sha256(sha.privateKey.toBin), isFunder = true)
+  def getLinkingKey(domainName: String) = {
+    val prefix = crypto.Digests.hmacSha256(hashingKey.toArray, domainName getBytes "UTF-8") take 8
+    derivePrivateKey(master, hardened(138L) :: 0L :: BigInt(prefix).toLong :: Nil).privateKey
+  }
+
+  def backupFileName = s"blw${chainHash.toString}-${cloudId.toString}.bkup"
+  def updateFeerate = for (chan <- ChannelManager.notClosing) chan process CMDFeerate(broadcaster.perKwThreeSat)
+  def makeLocalParams(ann: NodeAnnouncement, theirReserve: Long, finalScriptPubKey: BinaryData, idx: Long, isFunder: Boolean) = {
+    val Seq(fund, revoke, pay, delay, htlc, sha) = for (ord <- 0L to 5L) yield derivePrivateKey(extendedNodeKey, idx :: ord :: Nil)
+    LocalParams(UInt64(maxHtlcValueMsat), theirReserve, toSelfDelay = 2016, maxAcceptedHtlcs = 25, fund.privateKey, revoke.privateKey,
+      pay.privateKey, delay.privateKey, htlc.privateKey, finalScriptPubKey, dust, shaSeed = sha256(sha.privateKey.toBin), isFunder)
   }
 }
 
@@ -66,7 +87,7 @@ object AddErrorCodes {
   val ERR_REMOTE_AMOUNT_HIGH = err_ln_remote_amount_high
   val ERR_REMOTE_AMOUNT_LOW = err_ln_remote_amount_low
   val ERR_TOO_MANY_HTLC = err_ln_too_many
-  val ERR_FAILED = err_general
+  val ERR_FAILED = err_no_data
 }
 
 trait PublishStatus {
@@ -90,8 +111,8 @@ case class ShowDelayed(parent: (DepthAndDead, Long), txn: Transaction, commitTx:
 trait Broadcaster extends ChannelListener {
   def getTx(txid: BinaryData): Option[org.bitcoinj.core.Transaction]
   def getStatus(txid: BinaryData): DepthAndDead
-  def currentHeight: Long
   def perKwThreeSat: Long
+  def currentHeight: Int
   def perKwSixSat: Long
 
   // Parent state and next tier cltv delay

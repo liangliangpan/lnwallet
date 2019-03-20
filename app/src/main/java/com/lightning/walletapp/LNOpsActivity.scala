@@ -10,36 +10,36 @@ import com.lightning.walletapp.lnutils.ImplicitConversions._
 import com.lightning.walletapp.lnutils.ImplicitJsonFormats._
 
 import fr.acinq.bitcoin.{BinaryData, Satoshi}
-import com.lightning.walletapp.ln.Tools.{none, wrap}
-import android.view.{Menu, MenuItem, View, ViewGroup}
 import org.bitcoinj.core.{Block, FilteredBlock, Peer}
+import android.view.{Menu, MenuItem, View, ViewGroup}
+import com.lightning.walletapp.ln.Tools.{none, runAnd, wrap}
 import com.lightning.walletapp.ln.{Channel, ChannelData, RefundingData}
-
+import com.lightning.walletapp.ln.RoutingInfoTag.PaymentRoute
 import com.lightning.walletapp.lnutils.IconGetter.scrWidth
 import com.lightning.walletapp.lnutils.PaymentTable
 import com.lightning.walletapp.helper.RichCursor
 import android.support.v7.widget.Toolbar
 import org.bitcoinj.script.ScriptBuilder
+import co.infinum.goldfinger.Goldfinger
+import org.bitcoinj.uri.BitcoinURI
 import android.content.Intent
 import android.os.Bundle
 import android.net.Uri
+import scala.util.Try
 import java.util.Date
 
 
 class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
-  val localChanCache = for (channel <- app.ChannelManager.all if me canDisplay channel.data) yield channel
+  lazy val displayedChans = for (channel <- ChannelManager.all if me canDisplay channel.data) yield channel
   lazy val chanActions = for (txt <- getResources getStringArray R.array.ln_chan_actions_list) yield txt.html
   lazy val presentChans = app.getResources getStringArray R.array.ln_chan_present
   lazy val gridView = findViewById(R.id.gridView).asInstanceOf[GridView]
-  lazy val toolbar = findViewById(R.id.toolbar).asInstanceOf[Toolbar]
-  lazy val otherState = getString(ln_info_status_other)
-  lazy val fundingInfo = getString(ln_info_funding)
   lazy val host = me
 
   val adapter = new BaseAdapter {
-    def getItem(position: Int) = localChanCache(position)
+    def getItem(position: Int) = displayedChans(position)
     def getItemId(chanPosition: Int) = chanPosition
-    def getCount = localChanCache.size
+    def getCount = displayedChans.size
 
     def getView(position: Int, savedView: View, parent: ViewGroup) = {
       val card = if (null == savedView) getLayoutInflater.inflate(R.layout.chan_card, null) else savedView
@@ -49,19 +49,13 @@ class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
     }
   }
 
-  val becomeListener = new ChannelListener {
-    override def onBecome: PartialFunction[Transition, Unit] = {
-      case anyStateChange => UITask(adapter.notifyDataSetChanged).run
-    }
-  }
-
-  val blocksListener = new BlocksListener {
-    def onBlocksDownloaded(p: Peer, b: Block, fb: FilteredBlock, left: Int) =
-      if (left < 1) UITask(adapter.notifyDataSetChanged).run
+  val eventsListener = new ChannelListener with BlocksListener {
+    override def onBecome: PartialFunction[Transition, Unit] = { case anyStateChange => UITask(adapter.notifyDataSetChanged).run }
+    def onBlocksDownloaded(p: Peer, b: Block, fb: FilteredBlock, left: Int) = if (left < 1) UITask(adapter.notifyDataSetChanged).run
   }
 
   class ViewHolder(view: View) {
-    val extraInfo = view.findViewById(R.id.extraInfo)
+    val extraInfo = view.findViewById(R.id.extraInfo).asInstanceOf[View]
     val baseBar = view.findViewById(R.id.baseBar).asInstanceOf[ProgressBar]
     val overBar = view.findViewById(R.id.overBar).asInstanceOf[ProgressBar]
     val extraInfoText = view.findViewById(R.id.extraInfoText).asInstanceOf[TextView]
@@ -71,24 +65,22 @@ class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
     def setExtraInfo(resource: Int) = wrap(extraInfo setVisibility View.VISIBLE)(extraInfoText setText resource)
 
     val wrappers =
-      view.findViewById(R.id.refundableAmount) ::
-        view.findViewById(R.id.paymentsInFlight) ::
-        view.findViewById(R.id.paymentsReceived) ::
-        view.findViewById(R.id.totalCapacity) ::
-        view.findViewById(R.id.paymentsSent) ::
-        view.findViewById(R.id.fundingDepth) ::
-        view.findViewById(R.id.canReceive) ::
-        view.findViewById(R.id.startedAt) ::
-        view.findViewById(R.id.refundFee) ::
-        view.findViewById(R.id.closedAt) ::
-        view.findViewById(R.id.canSend) ::
+      view.findViewById(R.id.refundableAmount).asInstanceOf[View] ::
+        view.findViewById(R.id.paymentsInFlight).asInstanceOf[View] ::
+        view.findViewById(R.id.totalPayments).asInstanceOf[View] ::
+        view.findViewById(R.id.totalCapacity).asInstanceOf[View] ::
+        view.findViewById(R.id.fundingDepth).asInstanceOf[View] ::
+        view.findViewById(R.id.canReceive).asInstanceOf[View] ::
+        view.findViewById(R.id.startedAt).asInstanceOf[View] ::
+        view.findViewById(R.id.refundFee).asInstanceOf[View] ::
+        view.findViewById(R.id.closedAt).asInstanceOf[View] ::
+        view.findViewById(R.id.canSend).asInstanceOf[View] ::
         baseBar :: overBar :: Nil
 
+    val totalPaymentsText = view.findViewById(R.id.totalPaymentsText).asInstanceOf[TextView]
     val refundableAmountText = view.findViewById(R.id.refundableAmountText).asInstanceOf[TextView]
     val paymentsInFlightText = view.findViewById(R.id.paymentsInFlightText).asInstanceOf[TextView]
-    val paymentsReceivedText = view.findViewById(R.id.paymentsReceivedText).asInstanceOf[TextView]
     val totalCapacityText = view.findViewById(R.id.totalCapacityText).asInstanceOf[TextView]
-    val paymentsSentText = view.findViewById(R.id.paymentsSentText).asInstanceOf[TextView]
     val fundingDepthText = view.findViewById(R.id.fundingDepthText).asInstanceOf[TextView]
     val canReceiveText = view.findViewById(R.id.canReceiveText).asInstanceOf[TextView]
     val startedAtText = view.findViewById(R.id.startedAtText).asInstanceOf[TextView]
@@ -105,172 +97,206 @@ class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
         textWrapper setVisibility viewMap(!isGone)
       }
 
-    def fillView(chan: Channel) = {
-      val state = stateStatusColor(chan)
-      val connect = connectivityStatusColor(chan)
-      val stateConnect = s"<strong>$state</strong><br>$connect"
-      addressAndKey setText chan.data.announce.toString.html
-      stateAndConnectivity setText stateConnect.html
-      extraInfo setVisibility View.GONE
+    def showDetails(chan: Channel, cs: Commitments) = {
+      // Attempt to display relevant details based on state
+      // fallback to generic details if state is not known
 
-      chan { cs =>
-        val fundTxId = Commitments fundingTxid cs
-        val capacity = cs.commitInput.txOut.amount
-        val started = me time new Date(cs.startedAt)
-        val commitFee = Satoshi(cs.reducedRemoteState.feesSat)
-        val txDepth \ _ = LNParams.broadcaster.getStatus(fundTxId)
-        val canSendMsat \ canReceiveMsat = estimateCanSend(chan) -> estimateCanReceive(chan)
-        val valueInFlight = Satoshi(inFlightHtlcs(chan).map(_.add.amount.amount).sum / 1000L)
-        val refundable = Satoshi(Commitments.latestRemoteCommit(cs).spec.toRemoteMsat / 1000L)
-        val threshold = math.max(cs.remoteParams.minimumDepth, LNParams.minDepth)
-        val valueReceived = Satoshi(getStat(cs.channelId, 1) / 1000L)
-        val valueSent = Satoshi(getStat(cs.channelId, 0) / 1000L)
+      val capacity = cs.commitInput.txOut.amount
+      val started = me time new Date(cs.startedAt)
+      val breakFee = Satoshi(cs.reducedRemoteState.myFeeSat)
+      val canReceiveMsat = estimateCanReceive(chan)
+      val canSendMsat = estimateCanSend(chan)
 
-        val barCanSend = cs.remoteCommit.spec.toRemoteMsat / capacity.amount
-        val reserveAndFee = cs.reducedRemoteState.feesSat + cs.remoteParams.channelReserveSatoshis
+      val refundable = cs.localCommit.spec.toLocalMsat
+      val inFlight = inFlightHtlcs(chan).toList.map(_.add.amountMsat).sum
+      val barCanSend = cs.remoteCommit.spec.toRemoteMsat / capacity.amount
+      val barCanReceive = barCanSend + canReceiveMsat / capacity.amount
 
-        baseBar setProgress barCanSend.toInt
-        baseBar setSecondaryProgress (barCanSend + canReceiveMsat / capacity.amount).toInt
-        overBar setProgress (reserveAndFee * 1000L / capacity.amount).toInt
+      // For incoming chans reserveAndFee is reserve only since fee is zero
+      val reserveAndFee = breakFee.amount + cs.remoteParams.channelReserveSatoshis
+      val barLocalReserve = math.min(barCanSend, reserveAndFee * 1000L / capacity.amount)
+      val fundingDepth \ fundingIsDead = LNParams.broadcaster.getStatus(chan.fundTxId)
+      val threshold = math.max(cs.remoteParams.minimumDepth, LNParams.minDepth)
 
-        startedAtText setText started.html
-        fundingDepthText setText fundingInfo.format(txDepth, threshold)
-        canReceiveText setText denom.withSign(Satoshi(canReceiveMsat) / 1000L).html
-        canSendText setText denom.withSign(Satoshi(canSendMsat) / 1000L).html
-        refundableAmountText setText denom.withSign(refundable).html
-        totalCapacityText setText denom.withSign(capacity).html
-        refundFeeText setText denom.withSign(commitFee).html
+      baseBar setProgress barCanSend.toInt
+      baseBar setSecondaryProgress barCanReceive.toInt
+      overBar setProgress barLocalReserve.toInt
 
-        paymentsInFlightText setText denom.withSign(valueInFlight).html
-        paymentsReceivedText setText sumOrNothing(valueReceived).html
-        paymentsSentText setText sumOrNothing(valueSent).html
+      startedAtText setText started.html
+      totalPaymentsText setText getStat(cs.channelId).toString
+      fundingDepthText setText getString(ln_info_funding).format(fundingDepth, threshold).html
+      refundableAmountText setText denom.parsedWithSign(Satoshi(refundable) / 1000L).html
+      canReceiveText setText denom.parsedWithSign(Satoshi(canReceiveMsat) / 1000L).html
+      canSendText setText denom.parsedWithSign(Satoshi(canSendMsat) / 1000L).html
+      paymentsInFlightText setText sumOrNothing(Satoshi(inFlight) / 1000L).html
+      totalCapacityText setText denom.parsedWithSign(capacity).html
+      refundFeeText setText sumOrNothing(breakFee).html
 
-        chan.data match {
-          case _: WaitFundingDoneData =>
-            visibleExcept(R.id.baseBar, R.id.overBar, R.id.canSend, R.id.canReceive,
-              R.id.closedAt, R.id.paymentsSent, R.id.paymentsReceived, R.id.paymentsInFlight)
+      chan.data match {
+        case norm: NormalData if isOperational(chan) =>
+          // Order matters: NormalData should always come before WaitData
+          // we only can display one item so sort them by increasing importance
 
-          case remote: WaitBroadcastRemoteData =>
-            if (remote.fail.isDefined) setExtraInfo(text = remote.fail.get.report.html)
-            visibleExcept(R.id.baseBar, R.id.overBar, R.id.canSend, R.id.canReceive,
-              R.id.closedAt, R.id.paymentsSent, R.id.paymentsReceived,
-              R.id.paymentsInFlight)
+          channelAndHop(chan) match {
+            case Some(_ \ vec) if isHighFee(vec) => setExtraInfo(me getString ln_info_high_fee format vec.head.feeBreakdown)
+            case None if fundingDepth > 6 => setExtraInfo(resource = ln_info_no_receive)
+            case _ => // We may not have it until 6 confs, do nothing
+          }
 
-          case _: NormalData if isOperational(chan) =>
-            val canNotReceive = txDepth > 6 && channelAndHop(chan).isEmpty
-            if (canNotReceive) setExtraInfo(resource = ln_info_no_receive)
-            visibleExcept(R.id.fundingDepth, R.id.closedAt)
+          // In Turbo channels we will have an OPEN state with NormalData and zeroconf
+          if (norm.unknownSpend.isDefined) setExtraInfo(resource = ln_info_unknown_spend)
+          if (fundingIsDead) setExtraInfo(resource = ln_info_funding_lost)
 
-          case _: NormalData | _: NegotiationsData =>
-            setExtraInfo(resource = ln_info_coop_attempt)
-            visibleExcept(R.id.baseBar, R.id.overBar, R.id.canSend,
-              R.id.canReceive, R.id.refundFee, R.id.fundingDepth,
-              R.id.closedAt)
+          // Relevant for Turbo channels: show funding depth until it reaches threshold
+          val fundingDepthCondition = if (fundingDepth < threshold) -1 else R.id.fundingDepth
+          visibleExcept(gone = fundingDepthCondition, R.id.closedAt)
 
-          case cd: ClosingData =>
-            setExtraInfo(text = me closedBy cd)
-            val closeDate = new Date(cd.closedAt)
-            closedAtText setText time(closeDate).html
+        case _: NormalData | _: NegotiationsData =>
+          setExtraInfo(resource = ln_info_coop_attempt)
+          visibleExcept(gone = R.id.baseBar, R.id.overBar, R.id.canSend,
+            R.id.canReceive, R.id.refundFee, R.id.fundingDepth, R.id.closedAt)
 
-            visibleExcept(R.id.baseBar, R.id.overBar, R.id.canSend, R.id.canReceive,
-              if (cd.mutualClose.isEmpty) -1 else R.id.refundFee, R.id.fundingDepth,
-              R.id.paymentsInFlight)
+        case wait: WaitData =>
+          if (fundingIsDead) setExtraInfo(resource = ln_info_funding_lost)
+          // Should catch WaitBroadcastRemoteData and WaitFundingDoneData, not NormalData
+          visibleExcept(gone = R.id.baseBar, R.id.overBar, R.id.canSend, R.id.canReceive,
+            R.id.closedAt, R.id.paymentsInFlight, R.id.totalPayments)
 
-          case _ =>
-            visibleExcept(R.id.baseBar, R.id.overBar, R.id.canSend, R.id.canReceive,
-              R.id.refundFee, R.id.closedAt, R.id.paymentsSent, R.id.fundingDepth,
-              R.id.paymentsReceived, R.id.paymentsInFlight)
-        }
+        case cd: ClosingData =>
+          setExtraInfo(text = me closedBy cd)
+          val closeDate = new Date(cd.closedAt)
+          closedAtText setText time(closeDate).html
 
-        // MENU PART
+          // Show breaking fee if this is NOT a mutual closing
+          val refundFeeCondition = if (cd.mutualClose.isEmpty) -1 else R.id.refundFee
+          visibleExcept(gone = R.id.baseBar, R.id.overBar, R.id.canSend, R.id.canReceive,
+            refundFeeCondition, R.id.fundingDepth, R.id.paymentsInFlight)
 
-        def warnAndMaybeClose(channelClosureWarning: String) =
-          mkCheckForm(alert => rm(alert)(chan process app.ChannelManager.CMDLocalShutdown),
-            none, baseTextBuilder(channelClosureWarning.html), dialog_ok, dialog_cancel)
+        case _ =>
+          visibleExcept(gone = R.id.baseBar, R.id.overBar, R.id.canSend,
+            R.id.canReceive, R.id.refundFee, R.id.closedAt, R.id.fundingDepth,
+            R.id.paymentsInFlight, R.id.totalPayments)
+      }
 
-        view setOnClickListener onButtonTap {
+      // MENU PART
+
+      def warnAndMaybeClose(channelClosureWarning: String) =
+        mkCheckForm(alert => rm(alert)(chan process ChannelManager.CMDLocalShutdown),
+          none, baseTextBuilder(channelClosureWarning.html), dialog_ok, dialog_cancel)
+
+      view setOnClickListener onButtonTap {
+        // All channel actions are sensitive, require auth
+        fpAuth(new Goldfinger.Builder(me).build, none)(next)
+
+        def next = {
+          val contextualChannelMenu = chan.data match {
+            // Unknown spend may be a future commit so we should not allow force-closing
+            case norm: NormalData if norm.unknownSpend.isDefined => chanActions.patch(2, Nil, 2)
+            // This likely means they have not broadcasted a tx, wait for it instead of closing
+            case _: WaitBroadcastRemoteData => chanActions take 2
+            case _: ClosingData => chanActions.patch(2, Nil, 2)
+            // Should not allow force-closing with old commit
+            case _: RefundingData => chanActions take 2
+            // Cut out refunding tx option
+            case _ => chanActions take 4
+          }
+
           val lst = getLayoutInflater.inflate(R.layout.frag_center_list, null).asInstanceOf[ListView]
-          val alert = showForm(negBuilder(dialog_cancel, chan.data.announce.toString.html, lst).create)
-          lst setAdapter new ArrayAdapter(me, R.layout.frag_top_tip, R.id.titleTip, me menu chan.data)
+          val alert = showForm(negBuilder(dialog_cancel, chan.data.announce.asString.html, lst).create)
+          lst setAdapter new ArrayAdapter(me, R.layout.frag_top_tip, R.id.titleTip, contextualChannelMenu)
           lst setDividerHeight 0
           lst setDivider null
 
-          def proceedCoopCloseOrWarn(startCoopClosing: => Unit) = rm(alert) {
-            val fundingOrOpenButOffline = isOperational(chan) || isOpening(chan)
-            val fundingOrOpenAndOnline = fundingOrOpenButOffline && chan.state != OFFLINE
+          lst setOnItemClickListener onTap { pos =>
+            // User has already authorized these actions
+            // so display to action list right away here
+            rm(alert)(defineAction)
 
-            if (fundingOrOpenAndOnline && inFlightHtlcs(chan).isEmpty) startCoopClosing
-            else if (fundingOrOpenAndOnline) warnAndMaybeClose(me getString ln_chan_close_inflight_details)
-            else if (fundingOrOpenButOffline) warnAndMaybeClose(me getString ln_chan_force_offline_details)
-            else warnAndMaybeClose(me getString ln_chan_force_details)
+            def defineAction = chan.data match {
+              case _ if 0 == pos => urlIntent(txid = chan.fundTxId.toString)
+              case _ if 1 == pos => share(chan.data.asInstanceOf[HasCommitments].toJson.toString)
+              // In the following two cases channel menu is reduced by 2 so we need to show an appropriate closing tx here
+              case norm: NormalData if 2 == pos && norm.unknownSpend.isDefined => urlIntent(txid = norm.unknownSpend.get.txid.toString)
+              case closing: ClosingData if 2 == pos => urlIntent(txid = closing.bestClosing.commitTx.txid.toString)
+              case _ if 2 == pos => proceedCoopCloseOrWarn(closeToWalletOrAddress = closeToAddress)
+              case _ => proceedCoopCloseOrWarn(closeToWalletOrAddress = closeToWallet)
+            }
           }
+
+          def proceedCoopCloseOrWarn(closeToWalletOrAddress: => Unit) = isOpeningOrOperational(chan) match {
+            case true if inFlightHtlcs(chan).nonEmpty => warnAndMaybeClose(me getString ln_chan_close_inflight_details)
+            case false => warnAndMaybeClose(me getString ln_chan_force_details)
+            case true => closeToWalletOrAddress
+          }
+
+          def closeToAddress =
+            Try(app.TransData parse app.getBufferUnsafe).toOption collectFirst { case uri: BitcoinURI =>
+              val text = me getString ln_chan_close_confirm_address format humanSix(uri.getAddress.toString)
+              val customShutdown = CMDShutdown apply Some(ScriptBuilder.createOutputScript(uri.getAddress).getProgram)
+              mkCheckForm(alert => rm(alert)(chan process customShutdown), none, baseTextBuilder(text.html), dialog_ok, dialog_cancel)
+            } getOrElse { app toast err_no_data }
 
           def closeToWallet = {
             // Simple case: send refunding transaction to this wallet
             warnAndMaybeClose(me getString ln_chan_close_confirm_local)
           }
-
-          def closeToAddress = app.getBufferTry map app.toAddress foreach { address =>
-            val text = me getString ln_chan_close_confirm_address format humanSix(address.toString)
-            val customShutdown = CMDShutdown apply Some(ScriptBuilder.createOutputScript(address).getProgram)
-            mkCheckForm(alert => rm(alert)(chan process customShutdown), none, baseTextBuilder(text.html),
-              dialog_ok, dialog_cancel)
-          }
-
-          def viewFunding = {
-            val uri = s"https://testnet.smartbit.com.au/tx/$fundTxId"
-            host startActivity new Intent(Intent.ACTION_VIEW, Uri parse uri)
-          }
-
-          lst setOnItemClickListener onTap {
-            case 3 => proceedCoopCloseOrWarn(startCoopClosing = closeToWallet)
-            case 2 => proceedCoopCloseOrWarn(startCoopClosing = closeToAddress)
-            case 1 => share(chan.data.asInstanceOf[HasCommitments].toJson.toString)
-            case 0 => viewFunding
-          }
         }
       }
     }
-  }
 
-  override def onDestroy = wrap(super.onDestroy) {
-    app.kit.peerGroup removeBlocksDownloadedEventListener blocksListener
-    for (chan <- localChanCache) chan.listeners -= becomeListener
-  }
+    def fillView(chan: Channel) = {
+      val state = stateStatusColor(chan)
+      val connect = connectivityStatusColor(chan)
 
-  override def onOptionsItemSelected(m: MenuItem) = {
-    if (m.getItemId == R.id.actionAddEntity) me exitTo classOf[LNStartActivity]
-    true
+      extraInfo setVisibility View.GONE
+      addressAndKey setText chan.data.announce.asString.html
+      stateAndConnectivity setText s"<strong>$state</strong><br>$connect".html
+      // Details method should be called after extraInfo is set to GONE above
+      chan.hasCsOr(sm => showDetails(chan, sm.commitments), null)
+    }
   }
 
   override def onCreateOptionsMenu(menu: Menu) = {
-    getMenuInflater.inflate(R.menu.add_entity, menu)
+    getMenuInflater.inflate(R.menu.lnops, menu)
     true
   }
 
-  def INIT(state: Bundle) = if (app.isAlive) {
-    wrap(me setSupportActionBar toolbar)(me setContentView R.layout.activity_ln_ops)
-    wrap(gridView setAdapter adapter)(getSupportActionBar setTitle action_ln_details)
-    getSupportActionBar setSubtitle app.plurOrZero(presentChans, localChanCache.size)
-    app.kit.peerGroup addBlocksDownloadedEventListener blocksListener
-    for (chan <- localChanCache) chan.listeners += becomeListener
+  override def onOptionsItemSelected(m: MenuItem) = runAnd(true) {
+    if (m.getItemId == R.id.actionAddNodeId) me share LNParams.nodePublicKey.toString
+  }
+
+  override def onDestroy = wrap(super.onDestroy) {
+    app.kit.peerGroup removeBlocksDownloadedEventListener eventsListener
+    for (chan <- displayedChans) chan.listeners -= eventsListener
+  }
+
+  def INIT(s: Bundle) = if (app.isAlive) {
+    me setContentView R.layout.activity_ln_ops
+    me initToolbar findViewById(R.id.toolbar).asInstanceOf[Toolbar]
+    getSupportActionBar setSubtitle app.plur1OrZero(presentChans, displayedChans.size)
+    getSupportActionBar setTitle action_ln_details
+
+    gridView setAdapter adapter
     gridView setNumColumns math.round(scrWidth / 2.4).toInt
+    app.kit.peerGroup addBlocksDownloadedEventListener eventsListener
+    for (chan <- displayedChans) chan.listeners += eventsListener
   } else me exitTo classOf[MainActivity]
 
   // UTILS
 
-  def stateStatusColor(c: Channel): String = c.state match {
-    case OPEN if isOperational(c) => me getString ln_info_status_open
-    case WAIT_FUNDING_DONE => me getString ln_info_status_opening
-    case NEGOTIATIONS => me getString ln_info_status_negotiations
-    case OPEN => me getString ln_info_status_shutdown
-    case _ => otherState format c.state
+  def stateStatusColor(c: Channel) = (c.data, c.state) match {
+    case (_: NormalData, OPEN) if isOperational(c) => me getString ln_info_status_open
+    case (_: NormalData, _) if !isOperational(c) => me getString ln_info_status_shutdown
+    case (_, WAIT_FUNDING_DONE) => me getString ln_info_status_opening
+    case (_, NEGOTIATIONS) => me getString ln_info_status_negotiations
+    case _ => me getString ln_info_status_other format c.state
   }
 
-  def connectivityStatusColor(c: Channel) = c.state match {
-    case OFFLINE | CLOSING => me getString ln_info_state_offline
-    case _ => me getString ln_info_state_online
-  }
+  def connectivityStatusColor(c: Channel) =
+    ConnectionManager.connections get c.data.announce.nodeId match {
+      case Some(w) if w.socket.isConnected => me getString ln_info_state_online
+      case _ => me getString ln_info_state_offline
+    }
 
   def closedBy(cd: ClosingData) =
     if (cd.remoteCommit.nonEmpty) me getString ln_info_close_remote
@@ -278,25 +304,13 @@ class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
     else if (cd.mutualClose.nonEmpty) me getString ln_info_close_coop
     else me getString ln_info_close_local
 
-  def canDisplay(chanData: ChannelData) = chanData match {
-    case ref: RefundingData => ref.remoteLatestPoint.isDefined
-    case _ => true
-  }
+  def urlIntent(txid: String) = host startActivity new Intent(Intent.ACTION_VIEW, Uri parse s"https://smartbit.com.au/tx/$txid")
+  def canDisplay(some: ChannelData) = some match { case ref: RefundingData => ref.remoteLatestPoint.isDefined case _ => true }
+  def sumOrNothing(sats: Satoshi) = if (0L == sats.toLong) getString(ln_info_nothing) else denom parsedWithSign sats
+  def isHighFee(route: PaymentRoute) = LNParams.isFeeBreach(route, msat = 1000000000L)
 
-  def menu(chanData: ChannelData) = chanData match {
-    case wbr: WaitBroadcastRemoteData if wbr.fail.isDefined => chanActions take 2
-    case _: RefundingData | _: ClosingData => chanActions take 2
-    case _ => chanActions
-  }
-
-  def sumOrNothing(sats: Satoshi) = sats match {
-    case Satoshi(0L) => me getString ln_info_nothing
-    case _ => denom withSign sats
-  }
-
-  def getStat(chanId: BinaryData, direction: Int) = {
-    // Direction = 0 = untgoing = lastMast, = 1 = incoming = firstMsat
-    val cursor = LNParams.db.select(PaymentTable.selectStatSql, chanId, direction)
-    RichCursor(cursor) headTry { case RichCursor(с1) => с1 getLong direction } getOrElse 0L
+  def getStat(chanId: BinaryData) = {
+    val cursor = LNParams.db.select(PaymentTable.selectPaymentNumSql, chanId)
+    RichCursor(cursor) headTry { case RichCursor(c1) => c1 getLong 0 } getOrElse 0L
   }
 }

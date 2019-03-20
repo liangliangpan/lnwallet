@@ -2,21 +2,19 @@ package com.lightning.walletapp.ln
 
 import fr.acinq.bitcoin._
 import fr.acinq.bitcoin.Crypto._
+import fr.acinq.bitcoin.Protocol._
 import com.softwaremill.quicklens._
 
 import scala.util.Try
 import java.nio.ByteOrder
 import scala.language.postfixOps
-import com.lightning.walletapp.ln.Tools.runAnd
 import com.lightning.walletapp.ln.wire.UpdateAddHtlc
 import fr.acinq.bitcoin.SigVersion.SIGVERSION_WITNESS_V0
-import fr.acinq.bitcoin.SigVersion.SIGVERSION_BASE
 import ScriptFlags.STANDARD_SCRIPT_VERIFY_FLAGS
 
 
 object Scripts { me =>
-  type ScriptEltSeq = Seq[ScriptElt]
-  def multiSig2of2(pubkey1: PublicKey, pubkey2: PublicKey): ScriptEltSeq =
+  def multiSig2of2(pubkey1: PublicKey, pubkey2: PublicKey) =
     LexicographicalOrdering.isLessThan(pubkey1.toBin, pubkey2.toBin) match {
       case false => Script.createMultiSigMofN(m = 2, pubkey2 :: pubkey1 :: Nil)
       case true => Script.createMultiSigMofN(m = 2, pubkey1 :: pubkey2 :: Nil)
@@ -55,10 +53,9 @@ object Scripts { me =>
   }
 
   // LN SCRIPTS
-  // @formatter:off
 
   def toLocalDelayed(revocationPubkey: PublicKey, toSelfDelay: Int,
-                     localDelayedPaymentPubkey: PublicKey): ScriptEltSeq =
+                     localDelayedPaymentPubkey: PublicKey) =
 
     OP_IF ::
       OP_PUSHDATA(revocationPubkey) ::
@@ -68,6 +65,10 @@ object Scripts { me =>
       OP_PUSHDATA(localDelayedPaymentPubkey) ::
     OP_ENDIF ::
     OP_CHECKSIG :: Nil
+
+  // This witness script spends a [[toLocalDelayed]] output using a revocation key as a punishment
+  def witnessToLocalDelayedWithRevocationSig(revocationSig: BinaryData, toLocalScript: BinaryData) =
+    ScriptWitness(revocationSig :: BinaryData("01") :: toLocalScript :: Nil)
 
   def htlcOffered(localHtlcPubkey: PublicKey, remoteHtlcPubkey: PublicKey,
                   revocationPubKey: PublicKey, payHash160: BinaryData) =
@@ -93,8 +94,7 @@ object Scripts { me =>
     OP_ENDIF :: Nil
 
   def htlcReceived(localHtlcPubkey: PublicKey, remoteHtlcPubkey: PublicKey,
-                   revocationPubKey: PublicKey, payHash160: BinaryData,
-                   lockTime: Long): ScriptEltSeq =
+                   revocationPubKey: PublicKey, payHash160: BinaryData, lockTime: Long) =
 
     OP_DUP :: OP_HASH160 ::
     OP_PUSHDATA(revocationPubKey.hash160) ::
@@ -117,8 +117,6 @@ object Scripts { me =>
         OP_CHECKSIG ::
       OP_ENDIF ::
     OP_ENDIF :: Nil
-
-  // @formatter:on
 
   // TRANSACTION TEMPLATES
 
@@ -162,11 +160,13 @@ object Scripts { me =>
 
   case class ClaimP2WPKHOutputTx(input: InputInfo, tx: Transaction) extends TransactionWithInputInfo
   case class ClaimDelayedOutputTx(input: InputInfo, tx: Transaction) extends TransactionWithInputInfo
+  case class ClaimDelayedOutputPenaltyTx(input: InputInfo, tx: Transaction) extends TransactionWithInputInfo
   case class MainPenaltyTx(input: InputInfo, tx: Transaction) extends TransactionWithInputInfo
   case class HtlcPenaltyTx(input: InputInfo, tx: Transaction) extends TransactionWithInputInfo
   case class ClosingTx(input: InputInfo, tx: Transaction) extends TransactionWithInputInfo
   def weight2fee(perKw: Long, weight: Int) = Satoshi(perKw * weight / 1000L)
 
+  val htlcWeight = 172
   val commitWeight = 724
   val htlcTimeoutWeight = 663
   val htlcSuccessWeight = 703
@@ -178,20 +178,19 @@ object Scripts { me =>
   val htlcPenaltyWeight = 577
 
   private def trimOfferedHtlcs(dustLimit: Satoshi, spec: CommitmentSpec) = {
-    val htlcTimeoutFee: MilliSatoshi = weight2fee(spec.feeratePerKw, htlcTimeoutWeight) + dustLimit
-    spec.htlcs.collect { case Htlc(false, add) if add.amountMsat >= htlcTimeoutFee.amount => add }.toSeq
+    val htlcTimeoutFee = weight2fee(spec.feeratePerKw, htlcTimeoutWeight) + dustLimit
+    spec.htlcs.collect { case Htlc(false, add) if add.amount >= htlcTimeoutFee => add }.toSeq
   }
 
   private def trimReceivedHtlcs(dustLimit: Satoshi, spec: CommitmentSpec) = {
-    val htlcSuccessFee: MilliSatoshi = weight2fee(spec.feeratePerKw, htlcSuccessWeight) + dustLimit
-    spec.htlcs.collect { case Htlc(true, add) if add.amountMsat >= htlcSuccessFee.amount => add }.toSeq
+    val htlcSuccessFee = weight2fee(spec.feeratePerKw, htlcSuccessWeight) + dustLimit
+    spec.htlcs.collect { case Htlc(true, add) if add.amount >= htlcSuccessFee => add }.toSeq
   }
 
-  def commitTxFee(dustLimit: Satoshi, spec: CommitmentSpec): Satoshi = {
-    val trimmedOfferedHtlcs = 172 * trimOfferedHtlcs(dustLimit, spec).size
-    val trimmedReceivedHtlcs = 172 * trimReceivedHtlcs(dustLimit, spec).size
-    val weight = commitWeight + trimmedOfferedHtlcs + trimmedReceivedHtlcs
-    weight2fee(spec.feeratePerKw, weight)
+  def commitTxFee(dustLimit: Satoshi, spec: CommitmentSpec) = {
+    val trimmedOfferedHtlcs = htlcWeight * trimOfferedHtlcs(dustLimit, spec).size
+    val trimmedReceivedHtlcs = htlcWeight * trimReceivedHtlcs(dustLimit, spec).size
+    weight2fee(spec.feeratePerKw, commitWeight + trimmedOfferedHtlcs + trimmedReceivedHtlcs)
   }
 
   // Commit tx with obscured tx number
@@ -247,10 +246,14 @@ object Scripts { me =>
     claimHtlcDelayed.modify(_.tx).using(_ updateWitnesses ScriptWitness(localSig :: BinaryData.empty ::
       claimHtlcDelayed.input.redeemScript :: Nil) :: Nil)
 
+  def addSigs(claimHtlcDelayedPenalty: ClaimDelayedOutputPenaltyTx, revocationSig: BinaryData): ClaimDelayedOutputPenaltyTx =
+    claimHtlcDelayedPenalty.modify(_.tx).using(_ updateWitnesses Scripts.witnessToLocalDelayedWithRevocationSig(revocationSig,
+      claimHtlcDelayedPenalty.input.redeemScript) :: Nil)
+
   def sign(tx: Transaction, inputIndex: Int, redeemScript: BinaryData, amount: Satoshi, key: PrivateKey): BinaryData =
     Transaction.signInput(tx, inputIndex, redeemScript, SIGHASH_ALL, amount, SIGVERSION_WITNESS_V0, key)
 
-  def sign(txinfo: TransactionWithInputInfo, key: PrivateKey): BinaryData =
+  def sign(key: PrivateKey)(txinfo: TransactionWithInputInfo): BinaryData =
     sign(txinfo.tx, 0, txinfo.input.redeemScript, txinfo.input.txOut.amount, key)
 
   def checkValid[T <: TransactionWithInputInfo](txWithInputInfo: => T) = Try {
@@ -273,14 +276,10 @@ object Scripts { me =>
     val toRemote = Satoshi(spec.toRemoteMsat / 1000L)
     val toLocal = Satoshi(spec.toLocalMsat / 1000L)
 
-    val localSat \ remoteSat = localIsFunder match {
-      case true => Tuple2(toLocal - commitFee, toRemote)
-      case false => Tuple2(toLocal, toRemote - commitFee)
-    }
-
     val redeem = toLocalDelayed(localRevocationPubkey, toLocalDelay, localDelayedPaymentPubkey)
-    val toLocalDelayedOutput = if (localSat < localDustLimit) Nil else TxOut(localSat, Script pay2wsh redeem) :: Nil
+    val localSat \ remoteSat = if (localIsFunder) Tuple2(toLocal - commitFee, toRemote) else Tuple2(toLocal, toRemote - commitFee)
     val toRemoteOutput = if (remoteSat < localDustLimit) Nil else TxOut(remoteSat, Script pay2wpkh remotePaymentPubkey) :: Nil
+    val toLocalDelayedOutput = if (localSat < localDustLimit) Nil else TxOut(localSat, Script pay2wsh redeem) :: Nil
 
     val htlcOfferedOutputs = trimOfferedHtlcs(dustLimit = localDustLimit, spec) map { add =>
       val offered = htlcOffered(localHtlcPubkey, remoteHtlcPubkey, localRevocationPubkey, add.hash160)
@@ -292,9 +291,9 @@ object Scripts { me =>
       TxOut(add.amount, Script pay2wsh received)
     }
 
-    // Make an obscured tx number as defined in BOLT #3 (a 48 bits integer) which we can use in case of contract breach
-    val txNumber = obscuredCommitTxNumber(commitTxNumber, localIsFunder, localPaymentBasePoint, remotePaymentBasePoint)
-    val (sequence, locktime) = encodeTxNumber(txNumber)
+    val sequence \ locktime =
+      me encodeTxNumber obscuredCommitTxNumber(commitTxNumber,
+        localIsFunder, localPaymentBasePoint, remotePaymentBasePoint)
 
     val outs = toLocalDelayedOutput ++ toRemoteOutput ++ htlcOfferedOutputs ++ htlcReceivedOutputs
     val in = TxIn(commitTxInput.outPoint, Array.emptyByteArray, sequence = sequence) :: Nil
@@ -309,11 +308,11 @@ object Scripts { me =>
                   remoteHtlcPubkey: PublicKey, spec: CommitmentSpec) = {
 
     val finder = new PubKeyScriptIndexFinder(commitTx)
-    def makeHtlcTx(redeem: ScriptEltSeq, pubKey: ScriptEltSeq, amount: Satoshi, fee: Satoshi, expiry: Long) = {
+    def makeHtlcTx(redeem: Seq[ScriptElt], pubKeyScript: Seq[ScriptElt], amount: Satoshi, fee: Satoshi, expiry: Long) = {
       val index = finder.findPubKeyScriptIndex(pubkeyScript = Script.write(Script pay2wsh redeem), Option apply amount)
       val inputInfo = InputInfo(OutPoint(commitTx, index), commitTx.txOut(index), Script write redeem)
       val txIn = TxIn(inputInfo.outPoint, BinaryData.empty, 0x00000000L) :: Nil
-      val txOut = TxOut(amount - fee, pubKey) :: Nil
+      val txOut = TxOut(amount - fee, pubKeyScript) :: Nil
       val tx = Transaction(2, txIn, txOut, expiry)
       inputInfo -> tx
     }
@@ -428,6 +427,28 @@ object Scripts { me =>
     val txOut = TxOut(finalAmount, localFinalScriptPubKey) :: Nil
     val tx = Transaction(2, txIn, txOut, lockTime = 0L)
     HtlcPenaltyTx(inputInfo, tx)
+  }
+
+  def makeClaimDelayedOutputPenaltyTx(delayedOutputTx: Transaction, localRevocationPubkey: PublicKey, toLocalDelay: Int,
+                                      localDelayedPaymentPubkey: PublicKey, localFinalScriptPubKey: BinaryData, feeratePerKw: Long,
+                                      dustLimit: Satoshi): Try[ClaimDelayedOutputPenaltyTx] = Try {
+
+    val finder = new PubKeyScriptIndexFinder(delayedOutputTx)
+    val redeem = toLocalDelayed(localRevocationPubkey, toLocalDelay, localDelayedPaymentPubkey)
+    val index = finder.findPubKeyScriptIndex(pubkeyScript = Script.write(Script pay2wsh redeem), None)
+    val inputInfo = InputInfo(OutPoint(delayedOutputTx, index), delayedOutputTx.txOut(index), Script write redeem)
+
+    // Make an unsigned dummy transaction
+    val txIn = TxIn(inputInfo.outPoint, Array.emptyByteArray, 0xffffffffL) :: Nil
+    val txOut = TxOut(Satoshi(0), localFinalScriptPubKey) :: Nil
+    val tx = Transaction(2, txIn, txOut, lockTime = 0)
+
+    // Compute weight with a dummy 73 bytes signature which is the largest one can get
+    val approx = Scripts.addSigs(ClaimDelayedOutputPenaltyTx(inputInfo, tx), "00" * 73).tx.weight(PROTOCOL_VERSION)
+    val finalAmount = inputInfo.txOut.amount - weight2fee(perKw = feeratePerKw, weight = approx)
+    if (finalAmount < dustLimit) throw new LightningException("HtlcPunishTx amount below dust")
+    val tx1 = tx.copy(txOut = tx.txOut.head.copy(amount = finalAmount) :: Nil)
+    ClaimDelayedOutputPenaltyTx(inputInfo, tx1)
   }
 }
 

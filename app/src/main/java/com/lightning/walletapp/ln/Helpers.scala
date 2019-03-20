@@ -68,35 +68,40 @@ object Helpers {
     }
 
     def makeFirstClosing(commitments: Commitments, localScriptPubkey: BinaryData, remoteScriptPubkey: BinaryData) = {
-      val estimatedWeight = Transaction.weight(Scripts.addSigs(makeFunderClosingTx(commitments.commitInput, localScriptPubkey,
-        remoteScriptPubkey, Satoshi(0), Satoshi(0), commitments.localCommit.spec), commitments.localParams.fundingPrivKey.publicKey,
-        commitments.remoteParams.fundingPubkey, "aa" * 71, "bb" * 71).tx)
+      val closingTx = Scripts.addSigs(makeClosingTx(commitments.commitInput, localScriptPubkey, remoteScriptPubkey, Satoshi(0),
+        Satoshi(0), commitments.localCommit.spec, commitments.localParams.isFunder), commitments.localParams.fundingPrivKey.publicKey,
+        commitments.remoteParams.fundingPubkey, "aa" * 71, "bb" * 71)
 
-      // There is no need for a high fee in a mutual closing tx
-      val closingFee = Scripts.weight2fee(LNParams.broadcaster.perKwSixSat / 2, estimatedWeight)
+      // There is no need for a high fee in a mutual closing tx AND mutual fee can't be bigger than last commit tx fee
+      val computedClosingFee = Scripts.weight2fee(LNParams.broadcaster.perKwSixSat / 2, Transaction weight closingTx.tx)
+      val lastCommitFee = commitments.commitInput.txOut.amount - commitments.localCommit.commitTx.tx.allOutputsAmount
+      val closingFee = if (computedClosingFee > lastCommitFee) lastCommitFee else computedClosingFee
       makeClosing(commitments, closingFee, localScriptPubkey, remoteScriptPubkey)
     }
 
     def makeClosing(commitments: Commitments, closingFee: Satoshi, local: BinaryData, remote: BinaryData) = {
-      val theirDustIsHigherThanOurs = commitments.localParams.dustLimit < commitments.remoteParams.dustLimitSat
+      val theirDustIsHigherThanOurs: Boolean = commitments.localParams.dustLimit < commitments.remoteParams.dustLimitSat
       val dustLimit = if (theirDustIsHigherThanOurs) commitments.remoteParams.dustLimitSat else commitments.localParams.dustLimit
-      val closing = makeFunderClosingTx(commitments.commitInput, local, remote, dustLimit, closingFee, commitments.localCommit.spec)
 
-      val localClosingSig = Scripts.sign(closing, commitments.localParams.fundingPrivKey)
+      val closing: ClosingTx =
+        makeClosingTx(commitments.commitInput, local, remote, dustLimit,
+          closingFee, commitments.localCommit.spec, commitments.localParams.isFunder)
+
+      val localClosingSig = Scripts.sign(commitments.localParams.fundingPrivKey)(closing)
       val closingSigned = ClosingSigned(commitments.channelId, closingFee.amount, localClosingSig)
       require(isValidFinalScriptPubkey(remote), "Invalid remoteScriptPubkey")
       require(isValidFinalScriptPubkey(local), "Invalid localScriptPubkey")
       ClosingTxProposed(closing, closingSigned)
     }
 
-    def makeFunderClosingTx(commitTxInput: InputInfo, localScriptPubKey: BinaryData, remoteScriptPubKey: BinaryData,
-                            dustLimit: Satoshi, closingFee: Satoshi, spec: CommitmentSpec): ClosingTx = {
+    def makeClosingTx(commitTxInput: InputInfo, localScriptPubKey: BinaryData, remoteScriptPubKey: BinaryData,
+                      dustLimit: Satoshi, closingFee: Satoshi, spec: CommitmentSpec, localIsFunder: Boolean) = {
 
-      require(spec.htlcs.isEmpty, "No HTLCs allowed")
-      val toRemoteAmount: Satoshi = MilliSatoshi(spec.toRemoteMsat)
-      val toLocalAmount: Satoshi = MilliSatoshi(spec.toLocalMsat) - closingFee
-      val toLocalOutput = if (toLocalAmount < dustLimit) Nil else TxOut(toLocalAmount, localScriptPubKey) :: Nil
+      require(spec.htlcs.isEmpty, "No pending HTLCs allowed")
+      val toRemoteAmount: Satoshi = if (localIsFunder) MilliSatoshi(spec.toRemoteMsat) else MilliSatoshi(spec.toRemoteMsat) - closingFee
+      val toLocalAmount: Satoshi = if (localIsFunder) MilliSatoshi(spec.toLocalMsat) - closingFee else MilliSatoshi(spec.toLocalMsat)
       val toRemoteOutput = if (toRemoteAmount < dustLimit) Nil else TxOut(toRemoteAmount, remoteScriptPubKey) :: Nil
+      val toLocalOutput = if (toLocalAmount < dustLimit) Nil else TxOut(toLocalAmount, localScriptPubKey) :: Nil
       val input = TxIn(commitTxInput.outPoint, BinaryData.empty, sequence = 0xffffffffL) :: Nil
       val tx = Transaction(2, input, toLocalOutput ++ toRemoteOutput, lockTime = 0)
       ClosingTx(commitTxInput, LexicographicalOrdering sort tx)
@@ -106,7 +111,6 @@ object Helpers {
       val localPerCommitmentPoint = perCommitPoint(commitments.localParams.shaSeed, commitments.localCommit.index.toInt)
       val localRevocationPubkey = revocationPubKey(commitments.remoteParams.revocationBasepoint, localPerCommitmentPoint)
       val localDelayedPrivkey = derivePrivKey(commitments.localParams.delayedPaymentKey, localPerCommitmentPoint)
-      // No need to use a high fee rate for delayed transactions here
       val feeRate = LNParams.broadcaster.perKwSixSat
 
       def makeClaimDelayedOutput(tx: Transaction) = for {
@@ -115,7 +119,7 @@ object Helpers {
           commitments.localParams.defaultFinalScriptPubKey, feeRate,
           commitments.localParams.dustLimit)
 
-        sig = Scripts.sign(claimDelayed, localDelayedPrivkey)
+        sig = Scripts.sign(localDelayedPrivkey)(claimDelayed)
         signed <- Scripts checkValid Scripts.addSigs(claimDelayed, sig)
       } yield signed
 
@@ -140,34 +144,34 @@ object Helpers {
     // remoteCommit may refer to their current or next RemoteCommit, hence it is a separate parameter
     def claimRemoteCommitTxOutputs(commitments: Commitments, remoteCommit: RemoteCommit, bag: PaymentInfoBag) = {
       val localHtlcPrivkey = derivePrivKey(commitments.localParams.htlcKey, remoteCommit.remotePerCommitmentPoint)
-      // We need to use a rather high fee for htlc-claim because we compete with the counterparty
-      val feeRate = LNParams.broadcaster.perKwThreeSat
+      val localHtlcPubkey = localHtlcPrivkey.publicKey
 
       val (remoteCommitTx, timeout, success, remoteHtlcPubkey, remoteRevocationPubkey) =
         makeRemoteTxs(remoteCommit.index, commitments.localParams, commitments.remoteParams,
           commitments.commitInput, remoteCommit.remotePerCommitmentPoint, remoteCommit.spec)
 
       val finder = new PubKeyScriptIndexFinder(remoteCommitTx.tx)
+      val feeRate = LNParams.broadcaster.perKwThreeSat
 
       val claimSuccessTxs = for {
         HtlcTimeoutTx(_, _, add) <- timeout
         info <- bag.getPaymentInfo(add.paymentHash).toOption
-        claimHtlcSuccessTx <- Scripts.makeClaimHtlcSuccessTx(finder, localHtlcPrivkey.publicKey,
-          remoteHtlcPubkey, remoteRevocationPubkey, commitments.localParams.defaultFinalScriptPubKey,
-          add, feeRate, commitments.localParams.dustLimit).toOption
+        claimHtlcSuccessTx <- Scripts.makeClaimHtlcSuccessTx(finder, localHtlcPubkey, remoteHtlcPubkey,
+          remoteRevocationPubkey, commitments.localParams.defaultFinalScriptPubKey, add, feeRate,
+          commitments.localParams.dustLimit).toOption
 
-        sig = Scripts.sign(claimHtlcSuccessTx, localHtlcPrivkey)
+        sig = Scripts.sign(localHtlcPrivkey)(claimHtlcSuccessTx)
         signed = Scripts.addSigs(claimHtlcSuccessTx, sig, info.preimage)
         success <- Scripts.checkValid(signed).toOption
       } yield success
 
       val claimTimeoutTxs = for {
         HtlcSuccessTx(_, _, add) <- success
-        claimHtlcTimeoutTx <- Scripts.makeClaimHtlcTimeoutTx(finder, localHtlcPrivkey.publicKey,
-          remoteHtlcPubkey, remoteRevocationPubkey, commitments.localParams.defaultFinalScriptPubKey,
-          add, feeRate, commitments.localParams.dustLimit).toOption
+        claimHtlcTimeoutTx <- Scripts.makeClaimHtlcTimeoutTx(finder, localHtlcPubkey, remoteHtlcPubkey,
+          remoteRevocationPubkey, commitments.localParams.defaultFinalScriptPubKey, add, feeRate,
+          commitments.localParams.dustLimit).toOption
 
-        sig = Scripts.sign(claimHtlcTimeoutTx, localHtlcPrivkey)
+        sig = Scripts.sign(localHtlcPrivkey)(claimHtlcTimeoutTx)
         signed = Scripts.addSigs(claimHtlcTimeoutTx, sig)
         timeout <- Scripts.checkValid(signed).toOption
       } yield timeout
@@ -177,19 +181,14 @@ object Helpers {
     }
 
     def claimRemoteMainOutput(commitments: Commitments, remotePerCommitmentPoint: Point, commitTx: Transaction) = {
-      // May be a special case where we have lost our data and explicitly ask them to spend their local current commit
-      val localPaymentPrivkey = derivePrivKey(commitments.localParams.paymentKey, remotePerCommitmentPoint)
-      val finalScriptPubKey = commitments.localParams.defaultFinalScriptPubKey
-      // No need to use a high fee rate for main transaction here
-      val feeRate = LNParams.broadcaster.perKwSixSat
+      val localPaymentPrivateKey = derivePrivKey(secret = commitments.localParams.paymentKey, remotePerCommitmentPoint)
+      val ri = RevocationInfo(Nil, None, None, LNParams.broadcaster.perKwSixSat, commitments.localParams.dustLimit.amount,
+        commitments.localParams.defaultFinalScriptPubKey, 0, localPaymentPrivateKey.publicKey, null, null)
 
       val claimMain = for {
-        claimP2WPKH <- Scripts.makeClaimP2WPKHOutputTx(commitTx,
-          localPaymentPrivkey.publicKey, finalScriptPubKey, feeRate,
-          commitments.localParams.dustLimit)
-
-        sig = Scripts.sign(txinfo = claimP2WPKH, localPaymentPrivkey)
-        signed = Scripts.addSigs(claimP2WPKH, sig, localPaymentPrivkey.publicKey)
+        claimP2WPKH <- ri.makeClaimP2WPKHOutput(commitTx)
+        sig = Scripts.sign(localPaymentPrivateKey)(claimP2WPKH)
+        signed = Scripts.addSigs(claimP2WPKH, sig, ri.localPubKey)
         main <- Scripts.checkValid(signed)
       } yield main
 
@@ -197,69 +196,120 @@ object Helpers {
       RemoteCommitPublished(claimMain.toOption.toSeq, Nil, Nil, commitTx)
     }
 
-    def claimRevokedRemoteCommitTxOutputs(commitments: Commitments, tx: Transaction, bag: PaymentInfoBag) = {
-      val txNumber = Scripts.obscuredCommitTxNumber(number = Scripts.decodeTxNumber(tx.txIn.head.sequence, tx.lockTime),
+    // CONTRACT BREACH HANDLING
+
+    def makeRevocationInfo(commitments: Commitments, tx: Transaction,
+                           perCommitSecret: Scalar, feeRate: Long) = {
+
+      val remotePerCommitmentPoint = perCommitSecret.toPoint
+      val localPrivkey = derivePrivKey(commitments.localParams.paymentKey, remotePerCommitmentPoint)
+      val remoteRevocationPrivkey = revocationPrivKey(commitments.localParams.revocationSecret, perCommitSecret)
+      val remoteDelayedPaymentKey = derivePubKey(commitments.remoteParams.delayedPaymentBasepoint, remotePerCommitmentPoint)
+
+      val ri = RevocationInfo(redeemScriptsToSigs = Nil, claimMainTxSig = None, claimPenaltyTxSig = None,
+        feeRate, commitments.localParams.dustLimit.amount, commitments.localParams.defaultFinalScriptPubKey,
+        commitments.localParams.toSelfDelay, localPrivkey.publicKey, remoteRevocationPrivkey.publicKey,
+        remoteDelayedPaymentKey)
+
+      val finder = new PubKeyScriptIndexFinder(tx)
+      val htlcs = commitments.remoteCommit.spec.htlcs
+      val localHtlcKey = derivePubKey(commitments.localParams.htlcBasepoint, remotePerCommitmentPoint)
+      val remoteHtlcKey = derivePubKey(commitments.remoteParams.htlcBasepoint, remotePerCommitmentPoint)
+      val remoteRevKey = revocationPubKey(commitments.localParams.revocationBasepoint, remotePerCommitmentPoint)
+      val offered = for (Htlc(false, add) <- htlcs) yield Scripts.htlcOffered(remoteHtlcKey, localHtlcKey, remoteRevKey, add.hash160)
+      val received = for (Htlc(true, add) <- htlcs) yield Scripts.htlcReceived(remoteHtlcKey, localHtlcKey, remoteRevKey, add.hash160, add.expiry)
+      val redeemScripts = for (redeem <- offered ++ received) yield Tuple2(Script.write(Script pay2wsh redeem), Script write redeem)
+      val redeemScriptsMap = redeemScripts.toMap
+
+      val htlcPenaltySigs = for {
+        TxOut(_, publicKeyScript) <- tx.txOut
+        // Small HTLCs won't make it into tx outputs
+        redeemScript <- redeemScriptsMap get publicKeyScript
+        penaltyTx <- ri.makeHtlcPenalty(finder)(redeemScript).toOption
+        htlcSig = Scripts.sign(remoteRevocationPrivkey)(penaltyTx)
+      } yield (redeemScript, htlcSig)
+
+      ri.copy(redeemScriptsToSigs = htlcPenaltySigs.toList,
+        claimPenaltyTxSig = ri.makeMainPenalty(tx).map(Scripts sign remoteRevocationPrivkey).toOption,
+        claimMainTxSig = ri.makeClaimP2WPKHOutput(tx).map(Scripts sign localPrivkey).toOption)
+    }
+
+    // Here we have an existing RevocationInfo with updated fee rate
+    def reMakeRevocationInfo(ri: RevocationInfo, commitments: Commitments,
+                             tx: Transaction, perCommitSecret: Scalar) = {
+
+      val finder = new PubKeyScriptIndexFinder(tx)
+      val remotePerCommitmentPoint = perCommitSecret.toPoint
+      val localPrivkey = derivePrivKey(commitments.localParams.paymentKey, remotePerCommitmentPoint)
+      val remoteRevocationPrivkey = revocationPrivKey(commitments.localParams.revocationSecret, perCommitSecret)
+
+      val htlcPenaltySigs = for {
+        redeemScript \ _ <- ri.redeemScriptsToSigs
+        // Small HTLCs won't make it into tx outputs
+        penaltyTx <- ri.makeHtlcPenalty(finder)(redeemScript).toOption
+        htlcSig = Scripts.sign(remoteRevocationPrivkey)(penaltyTx)
+      } yield (redeemScript, htlcSig)
+
+      ri.copy(redeemScriptsToSigs = htlcPenaltySigs,
+        claimPenaltyTxSig = ri.makeMainPenalty(tx).map(Scripts sign remoteRevocationPrivkey).toOption,
+        claimMainTxSig = ri.makeClaimP2WPKHOutput(tx).map(Scripts sign localPrivkey).toOption)
+    }
+
+    def claimRevokedRemoteCommitTxOutputs(ri: RevocationInfo, tx: Transaction) = {
+      // We only save scripts and signatures in RevocationInfo to save storage space
+      // once required we regenerate full transactions here on demand
+      val finder = new PubKeyScriptIndexFinder(tx)
+
+      val claimMainTx = for {
+        sig <- ri.claimMainTxSig
+        makeClaimP2WPKH <- ri.makeClaimP2WPKHOutput(tx).toOption
+        signed = Scripts.addSigs(makeClaimP2WPKH, sig, ri.localPubKey)
+        main <- Scripts.checkValid(signed).toOption
+      } yield main
+
+      val claimPenaltyTx = for {
+        sig <- ri.claimPenaltyTxSig
+        theirMainPenalty <- ri.makeMainPenalty(tx).toOption
+        signed = Scripts.addSigs(theirMainPenalty, sig)
+        their <- Scripts.checkValid(signed).toOption
+      } yield their
+
+      val htlcPenaltyTxs = for {
+        redeemScript \ sig <- ri.redeemScriptsToSigs
+        htlcPenaltyTx <- ri.makeHtlcPenalty(finder)(redeemScript).toOption
+        signed = Scripts.addSigs(htlcPenaltyTx, sig, ri.remoteRevocationPubkey)
+        penalty <- Scripts.checkValid(signed).toOption
+      } yield penalty
+
+      RevokedCommitPublished(claimMainTx.toSeq,
+        claimPenaltyTx.toSeq, htlcPenaltyTxs, tx)
+    }
+
+    def extractCommitmentSecret(commitments: Commitments, commitTx: Transaction) = {
+      val txNumber = Scripts.obscuredCommitTxNumber(Scripts.decodeTxNumber(commitTx.txIn.head.sequence, commitTx.lockTime),
         !commitments.localParams.isFunder, commitments.remoteParams.paymentBasepoint, commitments.localParams.paymentBasepoint)
 
       val index = moves(largestTxIndex - txNumber)
-      getHash(commitments.remotePerCommitmentSecrets.hashes)(index) map { perCommitSecret =>
-        // At the very least we should take both balances + HTLCs if could be found in database
+      val hashes = commitments.remotePerCommitmentSecrets.hashes
+      getHash(hashes)(index).map(secretBytes => Scalar apply secretBytes)
+    }
 
-        val remotePerCommitmentSecretScalar = Scalar(perCommitSecret)
-        val remotePerCommitmentPoint = remotePerCommitmentSecretScalar.toPoint
+    def claimRevokedHtlcTxOutputs(commitments: Commitments, htlcTx: Transaction,
+                                  perCommitSecret: Scalar): Option[Transaction] = {
 
-        val finalScriptPubKey = commitments.localParams.defaultFinalScriptPubKey
-        val localPrivkey = derivePrivKey(commitments.localParams.paymentKey, remotePerCommitmentPoint)
-        val remoteDelayedPaymentKey = derivePubKey(commitments.remoteParams.delayedPaymentBasepoint, remotePerCommitmentPoint)
-        val remoteRevocationPrivkey = revocationPrivKey(commitments.localParams.revocationSecret, remotePerCommitmentSecretScalar)
-        val remoteRevocationPubkey = remoteRevocationPrivkey.publicKey
-        // No need to use a high fee rate for main transactions here
-        val feeRate = LNParams.broadcaster.perKwThreeSat
+      val remotePerCommitmentPoint = perCommitSecret.toPoint
+      val remoteRevocationPrivkey = revocationPrivKey(commitments.localParams.revocationSecret, perCommitSecret)
+      val remoteDelayedPaymentPubkey = derivePubKey(commitments.remoteParams.delayedPaymentBasepoint, remotePerCommitmentPoint)
 
-        val claimMainTx = for {
-          makeClaimP2WPKH <- Scripts.makeClaimP2WPKHOutputTx(tx, localPrivkey.publicKey,
-            finalScriptPubKey, feeRate, commitments.localParams.dustLimit)
+      for {
+        penaltyHtlcTx <- Scripts.makeClaimDelayedOutputPenaltyTx(delayedOutputTx = htlcTx, remoteRevocationPrivkey.publicKey,
+          commitments.localParams.toSelfDelay, remoteDelayedPaymentPubkey, commitments.localParams.defaultFinalScriptPubKey,
+          LNParams.broadcaster.perKwThreeSat, commitments.localParams.dustLimit).toOption
 
-          sig = Scripts.sign(txinfo = makeClaimP2WPKH, localPrivkey)
-          signed = Scripts.addSigs(makeClaimP2WPKH, sig, localPrivkey.publicKey)
-          main <- Scripts.checkValid(signed)
-        } yield main
-
-        val claimPenaltyTx = for {
-          theirMainPenalty <- Scripts.makeMainPenaltyTx(tx, remoteRevocationPubkey,
-            finalScriptPubKey, commitments.localParams.toSelfDelay, remoteDelayedPaymentKey,
-            feeRate, commitments.localParams.dustLimit)
-
-          sig = Scripts.sign(theirMainPenalty, remoteRevocationPrivkey)
-          signed = Scripts.addSigs(theirMainPenalty, sig)
-          their <- Scripts.checkValid(signed)
-        } yield their
-
-        val localHtlc = derivePubKey(commitments.localParams.htlcBasepoint, remotePerCommitmentPoint)
-        val remoteHtlc = derivePubKey(commitments.remoteParams.htlcBasepoint, remotePerCommitmentPoint)
-        val remoteRev = revocationPubKey(commitments.localParams.revocationBasepoint, remotePerCommitmentPoint)
-
-        val matching = bag getAllRevoked txNumber
-        val finder = new PubKeyScriptIndexFinder(tx)
-        val offered = for (h160 \ _ <- matching) yield Scripts.htlcOffered(remoteHtlc, localHtlc, remoteRev, h160)
-        val received = for (h160 \ expiry <- matching) yield Scripts.htlcReceived(remoteHtlc, localHtlc, remoteRev, h160, expiry)
-        val redeemScripts = for (redeem <- offered ++ received) yield Script.write(Script pay2wsh redeem) -> Script.write(redeem)
-        val redeemMap = redeemScripts.toMap
-
-        val htlcPenaltyTxs = for {
-          TxOut(_, publicKeyScript) <- tx.txOut
-          redeemScript <- redeemMap get publicKeyScript
-          htlcPenaltyTx <- Scripts.makeHtlcPenaltyTx(finder, redeemScript, finalScriptPubKey,
-            LNParams.broadcaster.perKwThreeSat, commitments.localParams.dustLimit).toOption
-
-          sig = Scripts.sign(htlcPenaltyTx, remoteRevocationPrivkey)
-          signed = Scripts.addSigs(htlcPenaltyTx, sig, remoteRevocationPubkey)
-          penalty <- Scripts.checkValid(signed).toOption
-        } yield penalty
-
-        RevokedCommitPublished(claimMainTx.toOption.toSeq,
-          claimPenaltyTx.toOption.toSeq, htlcPenaltyTxs, tx)
-      }
+        sig = Scripts.sign(remoteRevocationPrivkey)(penaltyHtlcTx)
+        signed = Scripts.addSigs(penaltyHtlcTx, revocationSig = sig)
+        penalty <- Scripts.checkValid(signed).toOption
+      } yield penalty.tx
     }
   }
 
@@ -274,21 +324,28 @@ object Helpers {
       InputInfo(outPoint, fundingTxOut, Script write multisig)
     }
 
-    // Assuming we are always a funder
-    def makeFirstFunderCommitTxs(cmd: CMDOpenChannel, remoteParams: AcceptChannel,
-                                 fundingTxHash: BinaryData, fundingTxOutputIndex: Int,
-                                 remoteFirstPoint: Point) = {
+    def makeFirstCommitTxs(localParams: LocalParams, fundingSat: Long, pushMsat: Long, initialFeeratePerKw: Long,
+                           remoteParams: AcceptChannel, fundingTxHash: BinaryData, fundingTxOutputIndex: Int,
+                           remoteFirstPoint: Point) = {
 
-      val funding = Satoshi(cmd.fundingSat)
-      val toLocalMsat = cmd.fundingSat * 1000L - cmd.pushMsat
+      val toLocalMsat = if (localParams.isFunder) fundingSat * 1000L - pushMsat else pushMsat
+      val toRemoteMsat = if (localParams.isFunder) pushMsat else fundingSat * 1000L - pushMsat
+
+      val localSpec = CommitmentSpec(initialFeeratePerKw, toLocalMsat, toRemoteMsat)
+      val remoteSpec = CommitmentSpec(initialFeeratePerKw, toRemoteMsat, toLocalMsat)
+
+      if (!localParams.isFunder) {
+        val fees = Scripts.commitTxFee(remoteParams.dustLimitSat, remoteSpec).amount
+        val missing = remoteSpec.toLocalMsat / 1000L - localParams.channelReserveSat - fees
+        if (missing < 0) throw new LightningException("They are funder and can not afford fees")
+      }
+
+      val localPerCommitmentPoint = perCommitPoint(localParams.shaSeed, 0L)
       val commitmentInput = makeFundingInputInfo(fundingTxHash, fundingTxOutputIndex,
-        funding, cmd.localParams.fundingPrivKey.publicKey, remoteParams.fundingPubkey)
+        Satoshi(fundingSat), localParams.fundingPrivKey.publicKey, remoteParams.fundingPubkey)
 
-      val localPerCommitmentPoint = perCommitPoint(cmd.localParams.shaSeed, 0L)
-      val localSpec = CommitmentSpec(cmd.initialFeeratePerKw, toLocalMsat, cmd.pushMsat)
-      val remoteSpec = CommitmentSpec(cmd.initialFeeratePerKw, cmd.pushMsat, toLocalMsat)
-      val (localCommitTx, _, _) = makeLocalTxs(0L, cmd.localParams, remoteParams, commitmentInput, localPerCommitmentPoint, localSpec)
-      val (remoteCommitTx, _, _, _, _) = makeRemoteTxs(0L, cmd.localParams, remoteParams, commitmentInput, remoteFirstPoint, remoteSpec)
+      val (localCommitTx, _, _) = makeLocalTxs(0L, localParams, remoteParams, commitmentInput, localPerCommitmentPoint, localSpec)
+      val (remoteCommitTx, _, _, _, _) = makeRemoteTxs(0L, localParams, remoteParams, commitmentInput, remoteFirstPoint, remoteSpec)
       (localSpec, localCommitTx, remoteSpec, remoteCommitTx)
     }
   }

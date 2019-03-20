@@ -8,98 +8,68 @@ import com.lightning.walletapp.Utils.app
 import fr.acinq.bitcoin.MilliSatoshi
 import language.implicitConversions
 import org.bitcoinj.core.Coin
+import language.postfixOps
 
 
 object Denomination {
   val locale = new java.util.Locale("en", "US")
   val symbols = new DecimalFormatSymbols(locale)
-  symbols.setGroupingSeparator(' ')
+  symbols.setGroupingSeparator('\u00A0')
   symbols.setDecimalSeparator('.')
 
   val formatFiat = new DecimalFormat("#,###,###.##")
   formatFiat setDecimalFormatSymbols symbols
 
+  def btcBigDecimal2MSat(btc: BigDecimal) = MilliSatoshi(btc * BtcDenomination.factor toLong)
   implicit def mSat2Coin(msat: MilliSatoshi): Coin = Coin.valueOf(msat.amount / 1000L)
   implicit def coin2MSat(cn: Coin): MilliSatoshi = MilliSatoshi(cn.value * 1000L)
-
-  def btcBigDecimal2MSat(btc: BigDecimal) = {
-    val btcAsMsat = btc * BtcDenomination.factor
-    MilliSatoshi(btcAsMsat.toLong)
-  }
 }
 
 trait Denomination {
-  def rawString2MSat(raw: String) = {
-    val factored = BigDecimal(raw) * factor
-    MilliSatoshi(factored.toLong)
+  def rawString2MSat(raw: String) = MilliSatoshi(BigDecimal(raw) * factor toLong)
+  def asString(msat: MilliSatoshi) = fmt format BigDecimal(msat.amount) / factor
+  def parsedWithSign(msat: MilliSatoshi) = parsed(msat) + sign
+  protected def parsed(msat: MilliSatoshi): String
+
+  def coloredP2WSH(msat: MilliSatoshi, suffix: String): String = {
+    val content = s"<font color=#0099FE>${this parsed msat}</font>$suffix"
+    val start = "<tt><font color=#AAAAAA>[</font></tt>"
+    val end = "<tt><font color=#AAAAAA>]</font></tt>"
+    s"$start$content$end"
   }
 
-  def asString(msat: MilliSatoshi): String = {
-    val factored = BigDecimal(msat.amount) / factor
-    fmt format factored
-  }
+  def coloredOut(msat: MilliSatoshi, suffix: String) = s"<font color=#E31300><tt>-</tt>${this parsed msat}</font>$suffix"
+  def coloredIn(msat: MilliSatoshi, suffix: String) = s"<font color=#6AAB38><tt>+</tt>${this parsed msat}</font>$suffix"
 
-  def formatted(msat: MilliSatoshi): String
-  def withSign(msat: MilliSatoshi): String
+  val amountInTxt: String
   val fmt: DecimalFormat
   val factor: Long
-  val txt: String
+  val sign: String
 }
 
 object SatDenomination extends Denomination {
   val fmt = new DecimalFormat("###,###,###.###")
-  val txt = app getString amount_hint_sat
+  val amountInTxt = app getString amount_hint_sat
+  val sign = "\u00A0sat"
   val factor = 1000L
 
   fmt setDecimalFormatSymbols symbols
-  def withSign(msat: MilliSatoshi) =
-    formatted(msat) + "\u00A0sat"
-
-  def formatted(msat: MilliSatoshi) = {
-    val basicFormattedSum = asString(msat)
-    val whole \ decimal = basicFormattedSum.splitAt(basicFormattedSum indexOf ".")
-    if (decimal == basicFormattedSum) basicFormattedSum else s"$whole<small>$decimal</small>"
-  }
-}
-
-object FinDenomination extends Denomination {
-  val fmt = new DecimalFormat("###,##0.0000###")
-  val txt = app getString amount_hint_fin
-  val factor = 10000000L
-
-  fmt setDecimalFormatSymbols symbols
-  def withSign(msat: MilliSatoshi) =
-    formatted(msat) + "\u00A0fin"
-
-  def formatted(msat: MilliSatoshi) = {
+  def parsed(msat: MilliSatoshi) = {
     val basicFormattedSum = asString(msat)
     val dotIndex = basicFormattedSum indexOf "."
     val whole \ decimal = basicFormattedSum splitAt dotIndex
-    val satDecimalPart \ milliSatDecimalPart = decimal splitAt 5
-
     if (decimal == basicFormattedSum) basicFormattedSum
-    else if (decimal == milliSatDecimalPart) s"$whole<small>$decimal</small>"
-    else s"$whole$satDecimalPart<small>$milliSatDecimalPart</small>"
+    else s"$whole<small>$decimal</small>"
   }
 }
 
 object BtcDenomination extends Denomination {
-  val fmt = new DecimalFormat("##0.000########")
-  val txt = app getString amount_hint_btc
+  val fmt = new DecimalFormat("##0.00000000###")
+  val amountInTxt = app getString amount_hint_btc
   val factor = 100000000000L
+  val sign = "\u00A0btc"
 
   fmt setDecimalFormatSymbols symbols
-  def withSign(msat: MilliSatoshi) =
-    formatted(msat) + "\u00A0btc"
-
-  def formatted(msat: MilliSatoshi) = {
-    val basicFormattedSum = asString(msat)
-    val dotIndex = basicFormattedSum indexOf "."
-    val whole \ decimal = basicFormattedSum splitAt dotIndex
-    val satDecimalPart \ milliSatDecimalPart = decimal splitAt 9
-
-    if (decimal == basicFormattedSum) basicFormattedSum
-    else if (decimal == milliSatDecimalPart) s"$whole<small>$decimal</small>"
-    else s"$whole$satDecimalPart<small>$milliSatDecimalPart</small>"
-  }
+  def parsed(msat: MilliSatoshi) =
+    asString(msat) take 10
 }

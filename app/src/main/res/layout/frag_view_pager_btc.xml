@@ -4,36 +4,81 @@
     xmlns:fab="http://schemas.android.com/apk/res-auto">
 
     <LinearLayout
+        android:id="@+id/mainWrap"
         android:baselineAligned="true"
         style="@style/StandardLinearLayout">
 
         <android.support.v7.widget.Toolbar
             xmlns:app="http://schemas.android.com/apk/res-auto"
-            app:popupTheme="@style/ThemeOverlay.AppCompat.Light"
+            xmlns:android="http://schemas.android.com/apk/res/android"
             android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+            app:subtitleTextAppearance="@style/ToolbarSubtitleAppearance"
+            app:titleTextAppearance="@style/ToolbarTitleAppearance"
+            app:popupTheme="@style/ThemeOverlay.AppCompat.Light"
             android:background="@android:color/black"
             android:layout_width="match_parent"
-            android:layout_height="84sp"
+            android:layout_height="70sp"
             android:id="@+id/toolbar"
 
             app:contentInsetLeft="@dimen/app_padding"
             app:contentInsetStart="@dimen/app_padding"
             app:contentInsetRight="@dimen/app_padding"
-            app:contentInsetEnd="@dimen/app_padding">
+            app:contentInsetEnd="@dimen/app_padding"/>
+
+        <LinearLayout
+            style="@style/LineLinearLayout"
+            android:layout_width="fill_parent"
+            android:orientation="vertical"
+            android:background="#222222"
+            android:id="@+id/lnDetails"
+            android:paddingTop="8dp">
 
             <TextView
-                style="@style/BaseText"
-                android:layout_width="match_parent"
+                style="@style/ToolbarTitleAppearance"
                 android:layout_height="wrap_content"
-                android:textColor="@android:color/white"
-                android:id="@+id/customTitle"
-                android:maxLines="3"/>
+                android:layout_width="wrap_content"
+                android:id="@+id/lnBalance"
+                android:textSize="24sp"/>
 
-        </android.support.v7.widget.Toolbar>
+            <TextView
+                style="@style/ToolbarSubtitleAppearance"
+                android:layout_height="wrap_content"
+                android:layout_width="match_parent"
+                android:id="@+id/lnStatus"/>
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/fiatDetails"
+            style="@style/LineLinearLayout"
+            android:orientation="horizontal"
+            android:layout_width="fill_parent"
+            android:background="#2AA3A3"
+            android:gravity="center">
+
+            <TextView
+                android:maxLines="1"
+                style="@style/BaseText"
+                android:ellipsize="end"
+                android:layout_weight="14"
+                android:layout_width="0dp"
+                android:textColor="#FFFFFF"
+                android:id="@+id/fiatBalance"/>
+
+            <TextView
+                android:maxLines="1"
+                style="@style/BaseText"
+                android:ellipsize="end"
+                android:layout_weight="12"
+                android:layout_width="0dp"
+                android:id="@+id/fiatRate"
+                android:textColor="#afd0e6"
+                android:gravity="end"/>
+
+        </LinearLayout>
 
         <ListView
             android:layout_weight="1"
-            android:visibility="gone"
             android:id="@+id/itemsList"
             style="@style/GrayDividerListView"/>
 
@@ -104,10 +149,10 @@
         <com.github.clans.fab.FloatingActionButton
             android:src="@drawable/ic_arrow_upward_white_18dp"
             fab:fab_label="@string/action_coins_send"
+            android:onClick="goSendPaymentForm"
             fab:fab_colorPressed="@color/btc"
             fab:fab_colorNormal="@color/btc"
             fab:fab_colorRipple="@color/btc"
-            android:onClick="goSendPayment"
             style="@style/FabButton"
             fab:fab_size="mini"/>
 

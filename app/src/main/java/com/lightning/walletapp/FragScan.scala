@@ -1,19 +1,28 @@
 package com.lightning.walletapp
 
 import android.view._
+import android.support.v4.app._
 import com.journeyapps.barcodescanner._
 import com.lightning.walletapp.ln.Tools._
 import com.lightning.walletapp.R.string._
+
+import android.support.v4.content.ContextCompat
+import android.content.pm.PackageManager
 import com.lightning.walletapp.Utils.app
 import android.support.v4.view.ViewPager
-import android.support.v4.app.Fragment
 import android.os.Bundle
 
 
 trait ScanActivity extends TimerActivity {
   lazy val walletPager = findViewById(R.id.walletPager).asInstanceOf[ViewPager]
-  def returnToBase(view: View) = walletPager.setCurrentItem(0, false)
+  val slidingFragmentAdapter: FragmentStatePagerAdapter
   def checkTransData: Unit
+
+  def returnToBase(view: View) = {
+    // Hack to fix a strange behavior
+    walletPager.setCurrentItem(1, false)
+    walletPager.setCurrentItem(0, false)
+  }
 }
 
 class FragScan extends Fragment with BarcodeCallback { me =>
@@ -26,18 +35,15 @@ class FragScan extends Fragment with BarcodeCallback { me =>
   override def onCreateView(inflator: LayoutInflater, vg: ViewGroup, bn: Bundle) =
     inflator.inflate(R.layout.frag_view_pager_scan, vg, false)
 
-  override def onViewCreated(view: View, savedInstanceState: Bundle) = {
+  override def onViewCreated(view: View, savedInstanceState: Bundle) = if (app.isAlive) {
+    val allowed = ContextCompat.checkSelfPermission(host, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+    if (!allowed) ActivityCompat.requestPermissions(host, Array(android.Manifest.permission.CAMERA), 104)
     barcodeReader = view.findViewById(R.id.reader).asInstanceOf[BarcodeView]
-    barcodeReader decodeContinuous me
   }
 
   override def setUserVisibleHint(isVisibleToUser: Boolean) = {
-    if (isAdded) if (isVisibleToUser) barcodeReader.resume else {
-      getFragmentManager.beginTransaction.detach(me).attach(me).commit
-      barcodeReader.pause
-    }
-
-    // Remove snapshot traces if stopped
+    if (isAdded && isVisibleToUser) runAnd(barcodeReader decodeContinuous me)(barcodeReader.resume)
+    else if (isAdded) runAnd(getFragmentManager.beginTransaction.detach(me).attach(me).commit)(barcodeReader.pause)
     super.setUserVisibleHint(isVisibleToUser)
   }
 

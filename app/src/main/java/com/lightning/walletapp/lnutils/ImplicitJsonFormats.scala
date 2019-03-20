@@ -4,21 +4,23 @@ import spray.json._
 import com.lightning.walletapp.ln._
 import com.lightning.walletapp.ln.wire._
 import com.lightning.walletapp.ln.Scripts._
+import com.lightning.walletapp.lnutils.olympus._
 import com.lightning.walletapp.lnutils.olympus.OlympusWrap._
 import com.lightning.walletapp.ln.wire.LightningMessageCodecs._
-import com.lightning.walletapp.ln.CommitmentSpec.{HtlcAndFail, HtlcAndFulfill}
-import com.lightning.walletapp.ln.Helpers.Closing.{SuccessAndClaim, TimeoutAndClaim}
-import com.lightning.walletapp.lnutils.olympus.{BlindMemo, BlindParam, CloudAct, CloudData}
-import fr.acinq.bitcoin.{BinaryData, MilliSatoshi, OutPoint, Satoshi, Transaction, TxOut}
-import fr.acinq.bitcoin.Crypto.{Point, PrivateKey, PublicKey, Scalar}
-import com.lightning.walletapp.ln.Tools.{Bytes, UserId}
-
 import com.lightning.walletapp.ln.crypto.ShaHashesWithIndex
 import com.lightning.walletapp.ln.crypto.ShaChain.Index
+import com.lightning.walletapp.ln.Tools.Bytes
 import fr.acinq.eclair.UInt64
 import scodec.bits.BitVector
 import java.math.BigInteger
+import scala.util.Try
 import scodec.Codec
+
+import fr.acinq.bitcoin.{BinaryData, MilliSatoshi, OutPoint, Satoshi, Transaction, TxOut}
+import com.lightning.walletapp.ln.Helpers.Closing.{SuccessAndClaim, TimeoutAndClaim}
+import com.lightning.walletapp.{IncomingChannelRequest, LNUrlData, WithdrawRequest}
+import com.lightning.walletapp.ln.CommitmentSpec.{HtlcAndFail, HtlcAndFulfill}
+import fr.acinq.bitcoin.Crypto.{Point, PrivateKey, PublicKey, Scalar}
 
 
 object ImplicitJsonFormats extends DefaultJsonProtocol { me =>
@@ -33,6 +35,13 @@ object ImplicitJsonFormats extends DefaultJsonProtocol { me =>
     def write(unserialized: T) = JsObject(base.write(unserialized).asJsObject.fields + extension)
     def read(serialized: JsValue) = base read serialized
     private val extension = "tag" -> JsString(tag)
+  }
+
+  def decide(raw: String) = {
+    val validJson = Try(raw.toJson.asJsObject.fields)
+    val hasError = validJson.map(_ apply "reason").map(json2String)
+    if (validJson.isFailure) throw new Exception("Invalid Json response")
+    if (hasError.isSuccess) throw new Exception(hasError.get)
   }
 
   implicit object BigIntegerFmt extends JsonFormat[BigInteger] {
@@ -84,6 +93,7 @@ object ImplicitJsonFormats extends DefaultJsonProtocol { me =>
   implicit val fundingLockedFmt = sCodecJsonFmt(fundingLockedCodec)
   implicit val channelUpdateFmt = sCodecJsonFmt(channelUpdateCodec)
   implicit val perHopPayloadFmt = sCodecJsonFmt(perHopPayloadCodec)
+  implicit val channelFlagsFmt = sCodecJsonFmt(channelFlagsCodec)
   implicit val commitSigFmt = sCodecJsonFmt(commitSigCodec)
   implicit val shutdownFmt = sCodecJsonFmt(shutdownCodec)
   implicit val uint64exFmt = sCodecJsonFmt(uint64ex)
@@ -103,69 +113,28 @@ object ImplicitJsonFormats extends DefaultJsonProtocol { me =>
   implicit val milliSatoshiFmt = jsonFormat[Long, MilliSatoshi](MilliSatoshi.apply, "amount")
   implicit val satoshiFmt = jsonFormat[Long, Satoshi](Satoshi.apply, "amount")
 
-  // Payment request and tags
+  // LNURL
 
-  implicit object TagFmt extends JsonFormat[Tag] {
-    def read(json: JsValue): Tag = PaymentRequest.Tag parse json.convertTo[Bytes]
-    def write(internal: Tag): JsValue = internal.toInt5s.toJson
-  }
-
-  implicit val paymentRequestFmt =
-    jsonFormat[String, Option[MilliSatoshi], Long, PublicKey, Vector[Tag], BinaryData,
-      PaymentRequest](PaymentRequest.apply, "prefix", "amount", "timestamp", "nodeId", "tags", "signature")
-
-  implicit val cloudActFmt = jsonFormat[BinaryData, Seq[HttpParam], String, CloudAct](CloudAct.apply, "data", "plus", "path")
-  implicit val cloudDataFmt = jsonFormat[Option[RequestAndMemo], Vector[ClearToken], Vector[CloudAct], CloudData](CloudData.apply, "info", "tokens", "acts")
-  implicit val ratesFmt = jsonFormat[Seq[Double], Seq[Double], Fiat2Btc, Long, Rates](Rates.apply, "feesSix", "feesThree", "exchange", "stamp")
-
-  // FundMsg
-
-  implicit object JsonMessageFmt extends JsonFormat[FundMsg] {
-    def write(unserialized: FundMsg): JsValue = unserialized match {
-      case unserialiedMessage: FundingTxReady => unserialiedMessage.toJson
-      case unserialiedMessage: PrepareFundingTx => unserialiedMessage.toJson
-      case unserialiedMessage: BroadcastFundingTx => unserialiedMessage.toJson
-      case unserialiedMessage: FundingTxBroadcasted => unserialiedMessage.toJson
-      case unserialiedMessage: Started => unserialiedMessage.toJson
-      case unserialiedMessage: Start => unserialiedMessage.toJson
-      case unserialiedMessage: Fail => unserialiedMessage.toJson
+  implicit object LNUrlDataFmt extends JsonFormat[LNUrlData] {
+    def write(unserialized: LNUrlData): JsValue = unserialized match {
+      case unserialiedMessage: IncomingChannelRequest => unserialiedMessage.toJson
+      case unserialiedMessage: WithdrawRequest => unserialiedMessage.toJson
     }
 
-    def read(serialized: JsValue): FundMsg =
-      serialized.asJsObject fields "tag" match {
-        case JsString("FundingTxReady") => serialized.convertTo[FundingTxReady]
-        case JsString("PrepareFundingTx") => serialized.convertTo[PrepareFundingTx]
-        case JsString("BroadcastFundingTx") => serialized.convertTo[BroadcastFundingTx]
-        case JsString("FundingTxBroadcasted") => serialized.convertTo[FundingTxBroadcasted]
-        case JsString("Started") => serialized.convertTo[Started]
-        case JsString("Start") => serialized.convertTo[Start]
-        case JsString("Fail") => serialized.convertTo[Fail]
-        case _ => throw new RuntimeException
-      }
+    def read(serialized: JsValue): LNUrlData = serialized.asJsObject fields "tag" match {
+      case JsString("channelRequest") => serialized.convertTo[IncomingChannelRequest]
+      case JsString("withdrawRequest") => serialized.convertTo[WithdrawRequest]
+      case _ => throw new RuntimeException
+    }
   }
 
-  implicit val failFmt: JsonFormat[Fail] =
-    taggedJsonFmt(jsonFormat[Int, String, String,
-      Fail](Fail.apply, "code", "reason", "userId"), tag = "Fail")
+  implicit val incomingChannelRequestFmt = taggedJsonFmt(jsonFormat[String, String, String, Long, Long,
+    IncomingChannelRequest](IncomingChannelRequest.apply, "uri", "callback", "k1", "capacity", "push"),
+    tag = "channelRequest")
 
-  implicit val startFmt: JsonFormat[Start] =
-    taggedJsonFmt(jsonFormat[UserId, Satoshi, String, Int, Option[String],
-      Start](Start.apply, "userId", "fundingAmount", "host", "port", "extra"), tag = "Start")
-
-  implicit val prepareFundingTxFmt: JsonFormat[PrepareFundingTx] = taggedJsonFmt(jsonFormat[UserId, BinaryData,
-    PrepareFundingTx](PrepareFundingTx.apply, "userId", "pubkeyScript"), tag = "PrepareFundingTx")
-
-  implicit val fundingTxReadyFmt: JsonFormat[FundingTxReady] = taggedJsonFmt(jsonFormat[UserId, BinaryData, Int,
-    FundingTxReady](FundingTxReady.apply, "userId", "txHash", "outIndex"), tag = "FundingTxReady")
-
-  implicit val broadcastFundingTxFmt: JsonFormat[BroadcastFundingTx] = taggedJsonFmt(jsonFormat[UserId, BinaryData,
-    BroadcastFundingTx](BroadcastFundingTx.apply, "userId", "txHash"), tag = "BroadcastFundingTx")
-
-  implicit val fundingTxBroadcastedFmt: JsonFormat[FundingTxBroadcasted] = taggedJsonFmt(jsonFormat[UserId, Transaction,
-    FundingTxBroadcasted](FundingTxBroadcasted.apply, "userId", "tx"), tag = "FundingTxBroadcasted")
-
-  implicit val startedFmt: JsonFormat[Started] = taggedJsonFmt(jsonFormat[Start, Long, Satoshi,
-    Started](Started.apply, "start", "expiry", "fee"), tag = "Started")
+  implicit val withdrawRequestFmt = taggedJsonFmt(jsonFormat[String, String, Long, String,
+    WithdrawRequest](WithdrawRequest.apply, "callback", "k1", "maxWithdrawable", "defaultDescription"),
+    tag = "withdrawRequest")
 
   // Channel data
 
@@ -185,6 +154,7 @@ object ImplicitJsonFormats extends DefaultJsonProtocol { me =>
         case JsString("ClaimHtlcTimeoutTx") => json.convertTo[ClaimHtlcTimeoutTx]
         case JsString("ClaimP2WPKHOutputTx") => json.convertTo[ClaimP2WPKHOutputTx]
         case JsString("ClaimDelayedOutputTx") => json.convertTo[ClaimDelayedOutputTx]
+        case JsString("ClaimDelayedOutputPenaltyTx") => json.convertTo[ClaimDelayedOutputPenaltyTx]
         case JsString("MainPenaltyTx") => json.convertTo[MainPenaltyTx]
         case JsString("HtlcPenaltyTx") => json.convertTo[HtlcPenaltyTx]
         case JsString("ClosingTx") => json.convertTo[ClosingTx]
@@ -199,6 +169,7 @@ object ImplicitJsonFormats extends DefaultJsonProtocol { me =>
       case transactionWithInputInfo: ClaimHtlcTimeoutTx => transactionWithInputInfo.toJson
       case transactionWithInputInfo: ClaimP2WPKHOutputTx => transactionWithInputInfo.toJson
       case transactionWithInputInfo: ClaimDelayedOutputTx => transactionWithInputInfo.toJson
+      case transactionWithInputInfo: ClaimDelayedOutputPenaltyTx => transactionWithInputInfo.toJson
       case transactionWithInputInfo: MainPenaltyTx => transactionWithInputInfo.toJson
       case transactionWithInputInfo: HtlcPenaltyTx => transactionWithInputInfo.toJson
       case transactionWithInputInfo: ClosingTx => transactionWithInputInfo.toJson
@@ -232,6 +203,9 @@ object ImplicitJsonFormats extends DefaultJsonProtocol { me =>
   implicit val htlcPenaltyTxFmt = taggedJsonFmt(jsonFormat[InputInfo, Transaction,
     HtlcPenaltyTx](HtlcPenaltyTx.apply, "input", "tx"), tag = "HtlcPenaltyTx")
 
+  implicit val claimDelayedOutputPenaltyTxFmt = taggedJsonFmt(jsonFormat[InputInfo, Transaction,
+    ClaimDelayedOutputPenaltyTx](ClaimDelayedOutputPenaltyTx.apply, "input", "tx"), tag = "ClaimDelayedOutputPenaltyTx")
+
   implicit val closingTxFmt = taggedJsonFmt(jsonFormat[InputInfo, Transaction,
     ClosingTx](ClosingTx.apply, "input", "tx"), tag = "ClosingTx")
 
@@ -250,8 +224,8 @@ object ImplicitJsonFormats extends DefaultJsonProtocol { me =>
   implicit val localCommitFmt = jsonFormat[Long, CommitmentSpec, Seq[HtlcTxAndSigs], CommitTx,
     LocalCommit](LocalCommit.apply, "index", "spec", "htlcTxsAndSigs", "commitTx")
 
-  implicit val remoteCommitFmt = jsonFormat[Long, CommitmentSpec, BinaryData, Point,
-    RemoteCommit](RemoteCommit.apply, "index", "spec", "txid", "remotePerCommitmentPoint")
+  implicit val remoteCommitFmt = jsonFormat[Long, CommitmentSpec, Option[Transaction], Point,
+    RemoteCommit](RemoteCommit.apply, "index", "spec", "txOpt", "remotePerCommitmentPoint")
 
   implicit val waitingForRevocationFmt = jsonFormat[RemoteCommit, CommitSig, Long,
     WaitingForRevocation](WaitingForRevocation.apply, "nextRemoteCommit", "sent",
@@ -261,11 +235,11 @@ object ImplicitJsonFormats extends DefaultJsonProtocol { me =>
     jsonFormat[LNMessageVector, LNMessageVector, LNMessageVector,
       Changes](Changes.apply, "proposed", "signed", "acked")
 
-  implicit val commitmentsFmt = jsonFormat[LocalParams, AcceptChannel, LocalCommit, RemoteCommit, Changes, Changes,
-    Long, Long, Either[WaitingForRevocation, Point], InputInfo, ShaHashesWithIndex, BinaryData, Option[Hop], Long,
+  implicit val commitmentsFmt = jsonFormat[LocalParams, AcceptChannel, LocalCommit, RemoteCommit, Changes, Changes, Long, Long,
+    Either[WaitingForRevocation, Point], InputInfo, ShaHashesWithIndex, BinaryData, Option[Hop], Option[ChannelFlags], Long,
     Commitments](Commitments.apply, "localParams", "remoteParams", "localCommit", "remoteCommit", "localChanges",
     "remoteChanges", "localNextHtlcId", "remoteNextHtlcId", "remoteNextCommitInfo", "commitInput",
-    "remotePerCommitmentSecrets", "channelId", "extraHop", "startedAt")
+    "remotePerCommitmentSecrets", "channelId", "extraHop", "channelFlags", "startedAt")
 
   implicit val localCommitPublishedFmt =
     jsonFormat[Seq[ClaimDelayedOutputTx], Seq[SuccessAndClaim], Seq[TimeoutAndClaim], Transaction,
@@ -319,29 +293,78 @@ object ImplicitJsonFormats extends DefaultJsonProtocol { me =>
 
   implicit val negotiationsDataFmt =
     taggedJsonFmt(jsonFormat[NodeAnnouncement, Commitments, Shutdown, Shutdown, Seq[ClosingTxProposed], Option[ClosingTx],
-      NegotiationsData](NegotiationsData.apply, "announce", "commitments", "localShutdown", "remoteShutdown",
-      "localProposals", "lastSignedTx"), tag = "NegotiationsData")
+      NegotiationsData](NegotiationsData.apply, "announce", "commitments", "localShutdown", "remoteShutdown", "localProposals", "lastSignedTx"),
+      tag = "NegotiationsData")
 
-  implicit val normalDataFmt = taggedJsonFmt(jsonFormat[NodeAnnouncement, Commitments, Option[Shutdown], Option[Shutdown],
-    NormalData](NormalData.apply, "announce", "commitments", "localShutdown", "remoteShutdown"), tag = "NormalData")
+  implicit val normalDataFmt =
+    taggedJsonFmt(jsonFormat[NodeAnnouncement, Commitments, Option[Shutdown], Option[Shutdown], Option[Transaction],
+      NormalData](NormalData.apply, "announce", "commitments", "localShutdown", "remoteShutdown", "unknownSpend"),
+      tag = "NormalData")
 
   implicit val waitFundingDoneDataFmt =
-    taggedJsonFmt(jsonFormat[NodeAnnouncement,
-      Option[FundingLocked], Option[FundingLocked], Transaction, Commitments,
-      WaitFundingDoneData](WaitFundingDoneData.apply, "announce", "our", "their",
-      "fundingTx", "commitments"), tag = "WaitFundingDoneData")
+    taggedJsonFmt(jsonFormat[NodeAnnouncement, Option[FundingLocked], Option[FundingLocked], Transaction, Commitments,
+      WaitFundingDoneData](WaitFundingDoneData.apply, "announce", "our", "their", "fundingTx", "commitments"),
+      tag = "WaitFundingDoneData")
 
   implicit val waitFundingSignedCoreFmt =
-    jsonFormat[LocalParams, BinaryData, AcceptChannel, CommitmentSpec, CommitTx, RemoteCommit,
-      WaitFundingSignedCore](WaitFundingSignedCore.apply, "localParams", "channelId",
-      "remoteParams", "localSpec", "localCommitTx", "remoteCommit")
+    jsonFormat[LocalParams, BinaryData, Option[ChannelFlags], AcceptChannel, CommitmentSpec, RemoteCommit,
+      WaitFundingSignedCore](WaitFundingSignedCore.apply, "localParams", "channelId", "channelFlags",
+      "remoteParams", "localSpec", "remoteCommit")
 
   implicit val waitBroadcastRemoteDataFmt =
-    taggedJsonFmt(jsonFormat[NodeAnnouncement,
-      WaitFundingSignedCore, BinaryData, Commitments, Option[Fail],
-      WaitBroadcastRemoteData](WaitBroadcastRemoteData.apply, "announce", "core",
-      "txHash", "commitments", "fail"), tag = "WaitBroadcastRemoteData")
+    taggedJsonFmt(jsonFormat[NodeAnnouncement, WaitFundingSignedCore, Commitments, Option[FundingLocked],
+      WaitBroadcastRemoteData](WaitBroadcastRemoteData.apply, "announce", "core", "commitments", "their"),
+      tag = "WaitBroadcastRemoteData")
 
   implicit val outRequestFmt = jsonFormat[Long, Set[String], Set[Long], Set[String], String,
       OutRequest](OutRequest.apply, "sat", "badNodes", "badChans", "from", "to")
+
+  // Payment request, tags, upload acts, backups
+
+  implicit object TagFmt extends JsonFormat[Tag] {
+    def read(json: JsValue): Tag = PaymentRequest.Tag parse json.convertTo[Bytes]
+    def write(internal: Tag): JsValue = internal.toInt5s.toJson
+  }
+
+  implicit val paymentRequestFmt =
+    jsonFormat[String, Option[MilliSatoshi], Long, PublicKey, Vector[Tag], BinaryData,
+      PaymentRequest](PaymentRequest.apply, "prefix", "amount", "timestamp", "nodeId", "tags", "signature")
+
+  implicit object CloudActFmt extends JsonFormat[CloudAct] {
+    def write(unserialized: CloudAct): JsValue = unserialized match {
+      case unserialiedMessage: ChannelUploadAct => unserialiedMessage.toJson
+      case unserialiedMessage: TxUploadAct => unserialiedMessage.toJson
+      case unserialiedMessage: CerberusAct => unserialiedMessage.toJson
+      case unserialiedMessage: LegacyAct => unserialiedMessage.toJson
+    }
+
+    def read(serialized: JsValue): CloudAct = serialized.asJsObject.fields get "tag" match {
+      case Some(s: JsString) if s.value == "ChannelUploadAct" => serialized.convertTo[ChannelUploadAct]
+      case Some(s: JsString) if s.value == "TxUploadAct" => serialized.convertTo[TxUploadAct]
+      case Some(s: JsString) if s.value == "CerberusAct" => serialized.convertTo[CerberusAct]
+      case _ => serialized.convertTo[LegacyAct] // TODO: remove later
+    }
+  }
+
+  implicit val legacyActFmt =
+    jsonFormat[BinaryData, Seq[HttpParam], String,
+      LegacyAct](LegacyAct.apply, "data", "plus", "path")
+
+  implicit val cerberusActFmt = taggedJsonFmt(jsonFormat[BinaryData, Seq[HttpParam], String, StringVec,
+    CerberusAct](CerberusAct.apply, "data", "plus", "path", "txids"), tag = "CerberusAct")
+
+  implicit val txUploadActFmt = taggedJsonFmt(jsonFormat[BinaryData, Seq[HttpParam], String,
+    TxUploadAct](TxUploadAct.apply, "data", "plus", "path"), tag = "TxUploadAct")
+
+  implicit val channelUploadActFmt = taggedJsonFmt(jsonFormat[BinaryData, Seq[HttpParam], String, String,
+    ChannelUploadAct](ChannelUploadAct.apply, "data", "plus", "path", "alias"), tag = "ChannelUploadAct")
+
+  implicit val cloudSnapshot = jsonFormat[Vector[ClearToken], String, CloudSnapshot](CloudSnapshot.apply, "tokens", "url")
+  implicit val cloudDataFmt = jsonFormat[Option[RequestAndMemo], Vector[ClearToken], Vector[CloudAct], CloudData](CloudData.apply, "info", "tokens", "acts")
+  implicit val ratesFmt = jsonFormat[Seq[Double], Seq[Double], Fiat2Btc, Long, Rates](Rates.apply, "feesSix", "feesThree", "exchange", "stamp")
+  implicit val topNodesFmt = jsonFormat[StringVec, Long, TopNodes](TopNodes.apply, "nodes", "stamp")
+
+  implicit val gDriveBackup =
+    taggedJsonFmt(jsonFormat[Vector[HasCommitments], Vector[CloudSnapshot], Int,
+      GDriveBackup](GDriveBackup.apply, "chans", "clouds", "v"), tag = "GDriveBackup")
 }
